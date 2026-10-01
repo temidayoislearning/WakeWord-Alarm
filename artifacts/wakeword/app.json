@@ -33,7 +33,8 @@
           "color": "#E66B4E",
           "defaultChannel": "wakeword-alarms"
         }
-      ]
+      ],
+      "expo-audio"
     ],
     "experiments": {
       "typedRoutes": true,
