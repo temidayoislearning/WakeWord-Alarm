@@ -1,0 +1,43 @@
+{
+  "expo": {
+    "name": "WakeWord",
+    "slug": "wakeword",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "wakeword",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "image": "./assets/images/icon.png",
+      "imageWidth": 160,
+      "resizeMode": "contain",
+      "backgroundColor": "#F7F4EE"
+    },
+    "ios": {
+      "supportsTablet": false
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/icon.png",
+        "backgroundColor": "#192723"
+      }
+    },
+    "web": {
+      "favicon": "./assets/images/icon.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-notifications",
+        {
+          "color": "#E66B4E",
+          "defaultChannel": "wakeword-alarms"
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    }
+  }
+}

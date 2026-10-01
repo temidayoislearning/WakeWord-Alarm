@@ -1,0 +1,24 @@
+kind = "mobile"
+previewPath = "/wakeword/"
+title = "WakeWord"
+description = "A cross-platform alarm app that wakes users by repeatedly speaking a custom phrase, with voice selection, repeat-day scheduling, snooze, and stop controls."
+version = "1.0.0"
+id = "artifacts/wakeword"
+router = "expo-domain"
+
+[[services]]
+name = "expo"
+ensurePreviewReachable = "/status"
+paths = [ "/wakeword/" ]
+localPort = 21417
+
+[services.development]
+run = "pnpm --filter @workspace/wakeword run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/wakeword", "run", "build" ]
+run = [ "pnpm", "--filter", "@workspace/wakeword", "run", "serve" ]
+
+[services.env]
+PORT = "21417"
+BASE_PATH = "/wakeword/"
