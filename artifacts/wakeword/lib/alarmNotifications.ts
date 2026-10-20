@@ -11,12 +11,17 @@ export type SchedulableWakeAlarm = {
   days: number[];
 };
 
+export type AlarmScheduleResult = {
+  notificationIds: string[];
+  notificationsAllowed: boolean;
+};
+
 function toNotificationWeekday(day: number) {
   return ((day + 1) % 7) + 1;
 }
 
 export async function ensureAlarmNotificationsAllowed() {
-  if (Platform.OS === 'web') return false;
+  if (Platform.OS === 'web') return { notificationsAllowed: false };
 
   if (Platform.OS === 'android') {
     await Notifications.setNotificationChannelAsync(ALARM_CHANNEL_ID, {
@@ -32,10 +37,8 @@ export async function ensureAlarmNotificationsAllowed() {
   }
 
   const current = await Notifications.getPermissionsAsync();
-  if (current.granted) return true;
-
-  const requested = await Notifications.requestPermissionsAsync();
-  return requested.granted;
+  const requested = current.granted ? current : await Notifications.requestPermissionsAsync();
+  return { notificationsAllowed: requested.granted };
 }
 
 function notificationContent(alarm: SchedulableWakeAlarm): Notifications.NotificationContentInput {
@@ -49,8 +52,10 @@ function notificationContent(alarm: SchedulableWakeAlarm): Notifications.Notific
 }
 
 export async function scheduleWakeAlarm(alarm: SchedulableWakeAlarm) {
-  const allowed = await ensureAlarmNotificationsAllowed();
-  if (!allowed) return [];
+  const permissions = await ensureAlarmNotificationsAllowed();
+  if (!permissions.notificationsAllowed) {
+    return { notificationIds: [], ...permissions } satisfies AlarmScheduleResult;
+  }
 
   const content = notificationContent(alarm);
 
@@ -67,16 +72,15 @@ export async function scheduleWakeAlarm(alarm: SchedulableWakeAlarm) {
         ...(Platform.OS === 'android'
           ? {
               channelId: ALARM_CHANNEL_ID,
-              delivery: 'alarmClock' as const,
             }
           : {}),
       },
     });
 
-    return [id];
+    return { notificationIds: [id], ...permissions } satisfies AlarmScheduleResult;
   }
 
-  return Promise.all(
+  const notificationIds = await Promise.all(
     alarm.days.map((day) =>
       Notifications.scheduleNotificationAsync({
         content,
@@ -88,7 +92,6 @@ export async function scheduleWakeAlarm(alarm: SchedulableWakeAlarm) {
                 hour: alarm.hour,
                 minute: alarm.minute,
                 channelId: ALARM_CHANNEL_ID,
-                delivery: 'alarmClock' as const,
               }
             : {
                 type: Notifications.SchedulableTriggerInputTypes.CALENDAR,
@@ -100,6 +103,7 @@ export async function scheduleWakeAlarm(alarm: SchedulableWakeAlarm) {
       }),
     ),
   );
+  return { notificationIds, ...permissions } satisfies AlarmScheduleResult;
 }
 
 export async function cancelWakeAlarmNotifications(ids: string[]) {
