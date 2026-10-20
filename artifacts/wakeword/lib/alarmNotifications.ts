@@ -1,5 +1,6 @@
 import { Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
+import { cancelNativeAlarm, scheduleNativeAlarm } from '@/modules/wakeword-alarms/src/WakeWordAlarms';
 
 export const ALARM_CHANNEL_ID = 'wakeword-alarms';
 
@@ -14,6 +15,9 @@ export type SchedulableWakeAlarm = {
 export type AlarmScheduleResult = {
   notificationIds: string[];
   notificationsAllowed: boolean;
+  nativeAlarmAvailable: boolean;
+  nativeAlarmScheduled: boolean;
+  nativeAlarmReason?: string;
 };
 
 function toNotificationWeekday(day: number) {
@@ -52,9 +56,38 @@ function notificationContent(alarm: SchedulableWakeAlarm): Notifications.Notific
 }
 
 export async function scheduleWakeAlarm(alarm: SchedulableWakeAlarm) {
-  const permissions = await ensureAlarmNotificationsAllowed();
+  const androidNotificationPermissions = Platform.OS === 'android'
+    ? await ensureAlarmNotificationsAllowed()
+    : null;
+  const native = await scheduleNativeAlarm(alarm).catch(() => ({
+    available: false,
+    scheduled: false,
+    permissionGranted: false,
+    platform: 'unavailable',
+    reason: 'Native alarm setup failed in this build.',
+  }));
+  if (native.scheduled) {
+    const permissionReason = androidNotificationPermissions && !androidNotificationPermissions.notificationsAllowed
+      ? 'Notifications are off. Enable notifications so Android can display the full-screen alarm alert.'
+      : native.reason;
+    return {
+      notificationIds: [],
+      notificationsAllowed: androidNotificationPermissions?.notificationsAllowed ?? true,
+      nativeAlarmAvailable: true,
+      nativeAlarmScheduled: true,
+      nativeAlarmReason: permissionReason,
+    } satisfies AlarmScheduleResult;
+  }
+
+  const permissions = androidNotificationPermissions ?? await ensureAlarmNotificationsAllowed();
   if (!permissions.notificationsAllowed) {
-    return { notificationIds: [], ...permissions } satisfies AlarmScheduleResult;
+    return {
+      notificationIds: [],
+      ...permissions,
+      nativeAlarmAvailable: native.available,
+      nativeAlarmScheduled: false,
+      nativeAlarmReason: native.reason,
+    } satisfies AlarmScheduleResult;
   }
 
   const content = notificationContent(alarm);
@@ -77,7 +110,7 @@ export async function scheduleWakeAlarm(alarm: SchedulableWakeAlarm) {
       },
     });
 
-    return { notificationIds: [id], ...permissions } satisfies AlarmScheduleResult;
+    return { notificationIds: [id], ...permissions, nativeAlarmAvailable: native.available, nativeAlarmScheduled: false, nativeAlarmReason: native.reason } satisfies AlarmScheduleResult;
   }
 
   const notificationIds = await Promise.all(
@@ -103,9 +136,13 @@ export async function scheduleWakeAlarm(alarm: SchedulableWakeAlarm) {
       }),
     ),
   );
-  return { notificationIds, ...permissions } satisfies AlarmScheduleResult;
+  return { notificationIds, ...permissions, nativeAlarmAvailable: native.available, nativeAlarmScheduled: false, nativeAlarmReason: native.reason } satisfies AlarmScheduleResult;
 }
 
 export async function cancelWakeAlarmNotifications(ids: string[]) {
   await Promise.all(ids.map((id) => Notifications.cancelScheduledNotificationAsync(id)));
+}
+
+export async function cancelWakeAlarmNative(id: string) {
+  await cancelNativeAlarm(id).catch(() => undefined);
 }

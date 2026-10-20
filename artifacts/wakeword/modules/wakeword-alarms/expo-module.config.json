@@ -1,0 +1,9 @@
+{
+  "platforms": ["apple", "android"],
+  "apple": {
+    "modules": ["WakeWordAlarmsModule"]
+  },
+  "android": {
+    "modules": ["expo.modules.wakewordalarms.WakeWordAlarmsModule"]
+  }
+}

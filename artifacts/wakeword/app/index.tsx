@@ -11,6 +11,7 @@ import {
   Animated,
   AppState,
   AppStateStatus,
+  Linking,
   Platform,
   Pressable,
   ScrollView,
@@ -25,7 +26,8 @@ import { useColors } from '@/hooks/useColors';
 import { MyVoiceRecorder } from '@/components/MyVoiceRecorder';
 import { VoiceModePicker } from '@/components/VoiceModePicker';
 import { VoiceModeId, getVoiceMode, speakWithVoiceMode } from '@/lib/voiceModes';
-import { cancelWakeAlarmNotifications, scheduleWakeAlarm } from '@/lib/alarmNotifications';
+import { cancelWakeAlarmNative, cancelWakeAlarmNotifications, scheduleWakeAlarm } from '@/lib/alarmNotifications';
+import { openNativeAlarmSettings, snoozeNativeAlarm, stopNativeRinging } from '@/modules/wakeword-alarms/src/WakeWordAlarms';
 
 type WakeAlarm = {
   id: string;
@@ -227,6 +229,20 @@ export default function WakeWordHome() {
   }, [loaded, startRinging]);
 
   useEffect(() => {
+    if (!loaded || Platform.OS === 'web') return;
+    const handleAlarmUrl = (url: string | null) => {
+      if (!url) return;
+      const match = url.match(/[?&]alarmId=([^&]+)/);
+      if (!match) return;
+      const alarm = alarmsRef.current.find((item) => item.id === decodeURIComponent(match[1]) && item.enabled);
+      if (alarm) startRinging(alarm);
+    };
+    void Linking.getInitialURL().then(handleAlarmUrl);
+    const subscription = Linking.addEventListener('url', ({ url }) => handleAlarmUrl(url));
+    return () => subscription.remove();
+  }, [loaded, startRinging]);
+
+  useEffect(() => {
     const subscription = AppState.addEventListener('change', (state: AppStateStatus) => {
       if (state === 'active' && ringingRef.current) {
         if (ringingRef.current.recordingUri) {
@@ -322,6 +338,7 @@ export default function WakeWordHome() {
 
   const cancelAlarmReminders = async (alarm: WakeAlarm) => {
     if (alarm.notificationIds.length) await cancelWakeAlarmNotifications(alarm.notificationIds);
+    await cancelWakeAlarmNative(alarm.id);
   };
 
   const saveAlarm = async () => {
@@ -342,12 +359,19 @@ export default function WakeWordHome() {
         minute,
         phrase: cleanPhrase,
         voiceMode,
+        recordingUri,
         days: [...days].sort(),
         enabled: true,
         notificationIds: [],
       };
 
-      let notificationResult = { notificationIds: [] as string[], notificationsAllowed: false };
+      let notificationResult = {
+        notificationIds: [] as string[],
+        notificationsAllowed: false,
+        nativeAlarmAvailable: false,
+        nativeAlarmScheduled: false,
+        nativeAlarmReason: undefined as string | undefined,
+      };
       try {
         notificationResult = await scheduleWakeAlarm(alarm);
       } catch {
@@ -363,10 +387,14 @@ export default function WakeWordHome() {
       setPhrase('');
       setRecordingUri(undefined);
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
-      if (!notificationResult.notificationsAllowed && Platform.OS !== 'web') {
+      if ((!notificationResult.notificationsAllowed || notificationResult.nativeAlarmReason) && Platform.OS !== 'web') {
         Alert.alert(
           'Alarm saved',
-          'WakeWord can speak this phrase while the app is open. Allow notifications in Settings for a reminder when it is closed.',
+          notificationResult.nativeAlarmReason ?? 'Allow alarm access in Settings for reliable alerts while WakeWord is closed. Without it, the alarm can only ring while the app is open.',
+          [
+            { text: 'Later', style: 'cancel' },
+            { text: 'Open settings', onPress: () => void openNativeAlarmSettings() },
+          ],
         );
       }
     } catch {
@@ -436,6 +464,7 @@ export default function WakeWordHome() {
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
     Speech.stop();
     audioPlayer.pause();
+    await stopNativeRinging(alarm.id).catch(() => undefined);
     if (snoozeTimeoutRef.current) clearTimeout(snoozeTimeoutRef.current);
     if (snoozeNotificationRef.current) {
       await Notifications.cancelScheduledNotificationAsync(snoozeNotificationRef.current).catch(() => undefined);
@@ -462,6 +491,8 @@ export default function WakeWordHome() {
     setRingingAlarm(null);
 
     const wakeAt = Date.now() + 5 * 60 * 1000;
+    await snoozeNativeAlarm(alarm.id, alarm.phrase).catch(() => undefined);
+    await stopNativeRinging(alarm.id).catch(() => undefined);
     try {
       const permission = await Notifications.getPermissionsAsync();
       const permissions = permission.granted ? permission : await Notifications.requestPermissionsAsync();
@@ -645,7 +676,7 @@ export default function WakeWordHome() {
             <View style={styles.formSection}>
               <MyVoiceRecorder value={recordingUri} onChange={setRecordingUri} colors={colors} />
               <Text style={[styles.fieldHelp, { color: colors.mutedForeground, marginTop: 8 }]}>
-                Your recording repeats while WakeWord is active. When the app is closed or the phone is locked, the operating system controls the reminder sound and timing.
+                Your recording loops while WakeWord is open. Native alarms need a custom iOS or Android build; iOS 26 uses its system alarm sound and shows your phrase, while Android can open WakeWord’s spoken loop when alarm and full-screen access are allowed.
               </Text>
             </View>
 
@@ -767,7 +798,7 @@ export default function WakeWordHome() {
               </Pressable>
             ) : null}
             <Text style={[styles.deliveryNote, { color: colors.mutedForeground }]}>
-              Spoken phrases repeat while WakeWord is active. When it is closed, your phone shows a system reminder; tap it to open WakeWord and start the repeating phrase. Timing and lock-screen behavior depend on device settings.
+              With a native build, Android can launch the spoken loop at alarm time when exact-alarm and full-screen access are allowed. iOS 26 shows an AlarmKit lock-screen alarm with your phrase and a system sound; the custom voice starts when WakeWord is open. Older iOS versions use a system reminder.
             </Text>
 
             <View style={styles.alarmsHeading}>
