@@ -491,25 +491,27 @@ export default function WakeWordHome() {
     setRingingAlarm(null);
 
     const wakeAt = Date.now() + 5 * 60 * 1000;
-    await snoozeNativeAlarm(alarm.id, alarm.phrase).catch(() => undefined);
+    const nativeSnoozeScheduled = await snoozeNativeAlarm(alarm.id, alarm.phrase).catch(() => false);
     await stopNativeRinging(alarm.id).catch(() => undefined);
     try {
-      const permission = await Notifications.getPermissionsAsync();
-      const permissions = permission.granted ? permission : await Notifications.requestPermissionsAsync();
-      if (permissions.granted) {
-        snoozeNotificationRef.current = await Notifications.scheduleNotificationAsync({
-          content: {
-            title: 'Time to get up',
-            body: alarm.phrase,
-            sound: 'default',
-            data: { alarmId: alarm.id },
-          },
-          trigger: {
-            type: Notifications.SchedulableTriggerInputTypes.DATE,
-            date: new Date(wakeAt),
-            ...(Platform.OS === 'android' ? { channelId: 'wakeword-alarms' } : {}),
-          },
-        });
+      if (!nativeSnoozeScheduled) {
+        const permission = await Notifications.getPermissionsAsync();
+        const permissions = permission.granted ? permission : await Notifications.requestPermissionsAsync();
+        if (permissions.granted) {
+          snoozeNotificationRef.current = await Notifications.scheduleNotificationAsync({
+            content: {
+              title: 'Time to get up',
+              body: alarm.phrase,
+              sound: 'default',
+              data: { alarmId: alarm.id },
+            },
+            trigger: {
+              type: Notifications.SchedulableTriggerInputTypes.DATE,
+              date: new Date(wakeAt),
+              ...(Platform.OS === 'android' ? { channelId: 'wakeword-alarms' } : {}),
+            },
+          });
+        }
       }
     } catch {
       // The foreground timer below still handles snooze if notification access is unavailable.

@@ -146,9 +146,10 @@ public final class WakeWordAlarmsModule: Module {
       return ["available": true, "scheduled": true, "permissionGranted": true, "platform": "ios"]
     }
 
-    AsyncFunction("snoozeAlarm") { (alarmID: String, phrase: String) async throws in
-      guard #available(iOS 26.0, *) else { return }
+    AsyncFunction("snoozeAlarm") { (alarmID: String, phrase: String) async throws -> Bool in
+      guard #available(iOS 26.0, *) else { return false }
       try await scheduleWakeWordSnooze(alarmID: alarmID, phrase: phrase)
+      return true
     }
 
     AsyncFunction("stopRinging") { (alarmID: String) throws in

@@ -82,9 +82,9 @@ class WakeWordAlarmsModule : Module() {
     }
 
     AsyncFunction("snoozeAlarm") { id: String, phrase: String ->
-      val context = appContext.reactContext ?: return@AsyncFunction
+      val context = appContext.reactContext ?: return@AsyncFunction false
       val manager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !manager.canScheduleExactAlarms()) return@AsyncFunction
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !manager.canScheduleExactAlarms()) return@AsyncFunction false
       val snoozeId = "$id-snooze"
       val requestCode = stableRequestCode(snoozeId, -1)
       val fire = Intent(context, WakeWordAlarmReceiver::class.java).apply {
@@ -97,6 +97,7 @@ class WakeWordAlarmsModule : Module() {
       val pending = PendingIntent.getBroadcast(context, requestCode, fire, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
       val show = PendingIntent.getActivity(context, requestCode + 1, ringIntent(context, id), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
       manager.setAlarmClock(AlarmManager.AlarmClockInfo(System.currentTimeMillis() + 5 * 60 * 1000, show), pending)
+      true
     }
 
     AsyncFunction("stopRinging") { id: String ->

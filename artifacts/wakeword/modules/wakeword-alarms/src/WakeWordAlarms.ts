@@ -19,7 +19,7 @@ export type NativeAlarmResult = {
 type WakeWordAlarmsNative = {
   scheduleAlarm(alarm: NativeAlarmInput): Promise<NativeAlarmResult>;
   cancelAlarm(id: string): Promise<void>;
-  snoozeAlarm(id: string, phrase: string): Promise<void>;
+  snoozeAlarm(id: string, phrase: string): Promise<boolean>;
   stopRinging(id: string): Promise<void>;
   requestAlarmPermission(): Promise<boolean>;
   openAlarmSettings(): Promise<void>;
@@ -58,7 +58,7 @@ export async function cancelNativeAlarm(id: string) {
 
 export async function snoozeNativeAlarm(id: string, phrase: string) {
   const module = getNativeModule();
-  if (module) await module.snoozeAlarm(id, phrase);
+  return module ? module.snoozeAlarm(id, phrase) : false;
 }
 
 export async function stopNativeRinging(id: string) {
