@@ -23,6 +23,9 @@ class WakeWordAlarmsModule : Module() {
       val phrase = input["phrase"] as? String ?: "Wake up"
       val days = (input["days"] as? List<*>)?.mapNotNull { (it as? Number)?.toInt() } ?: emptyList()
       val manager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+      val normalizedDays = days.distinct().filter { it in 0..6 }.sorted()
+      cancelStored(context, id)
+      persist(context, id, hour, minute, phrase, normalizedDays)
       val allowed = Build.VERSION.SDK_INT < Build.VERSION_CODES.S || manager.canScheduleExactAlarms()
       if (!allowed) {
         return@AsyncFunction mapOf(
@@ -34,8 +37,6 @@ class WakeWordAlarmsModule : Module() {
         )
       }
 
-      cancelStored(context, id)
-      val normalizedDays = days.distinct().filter { it in 0..6 }.sorted()
       val records = if (normalizedDays.isEmpty()) listOf(-1) else normalizedDays
       val now = System.currentTimeMillis()
       for (day in records) {
@@ -64,7 +65,6 @@ class WakeWordAlarmsModule : Module() {
         )
         manager.setAlarmClock(AlarmManager.AlarmClockInfo(triggerAt, show), pending)
       }
-      persist(context, id, hour, minute, phrase, normalizedDays)
       val fullScreenAllowed = Build.VERSION.SDK_INT < 34 ||
         (context.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager).canUseFullScreenIntent()
       mapOf(

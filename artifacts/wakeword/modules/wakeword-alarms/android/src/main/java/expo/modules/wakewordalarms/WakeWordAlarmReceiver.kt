@@ -91,7 +91,8 @@ class WakeWordAlarmBootReceiver : BroadcastReceiver() {
       Intent.ACTION_BOOT_COMPLETED,
       "android.intent.action.MY_PACKAGE_REPLACED",
       Intent.ACTION_TIME_CHANGED,
-      Intent.ACTION_TIMEZONE_CHANGED
+      Intent.ACTION_TIMEZONE_CHANGED,
+      AlarmManager.ACTION_SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED
     )) return
     val prefs = context.getSharedPreferences("wakeword-native-alarms", Context.MODE_PRIVATE)
     val manager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager

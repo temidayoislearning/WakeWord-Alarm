@@ -12,7 +12,8 @@ eas build --profile preview --platform ios
 ```
 
 Android uses `AlarmManager.setAlarmClock`, restores repeating alarms after boot or
-time-zone changes, and posts a full-screen alarm notification. Android 12+ requires
+time-zone changes or exact-alarm access being granted, and posts a full-screen alarm
+notification. Android 12+ requires
 the user to allow exact alarms. Android 14+ may also require full-screen access, and
 Android 13+ requires notifications. If full-screen access is unavailable, the alarm
 remains scheduled and the system shows its available notification UI.

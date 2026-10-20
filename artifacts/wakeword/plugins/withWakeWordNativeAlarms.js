@@ -34,6 +34,7 @@ const withWakeWordAndroidAlarmManifest = (config) =>
           { $: { 'android:name': 'android.intent.action.MY_PACKAGE_REPLACED' } },
           { $: { 'android:name': 'android.intent.action.TIME_SET' } },
           { $: { 'android:name': 'android.intent.action.TIMEZONE_CHANGED' } },
+          { $: { 'android:name': 'android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED' } },
         ] }],
       },
     ];
