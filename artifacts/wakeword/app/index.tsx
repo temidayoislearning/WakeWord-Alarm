@@ -517,8 +517,8 @@ export default function WakeWordHome() {
     setRingingAlarm(null);
 
     const wakeAt = Date.now() + 5 * 60 * 1000;
-    const nativeSnoozeScheduled = await snoozeNativeAlarm(alarm.id, alarm.phrase).catch(() => false);
     await stopNativeRinging(alarm.id).catch(() => undefined);
+    const nativeSnoozeScheduled = await snoozeNativeAlarm(alarm.id, alarm.phrase).catch(() => false);
     try {
       if (!nativeSnoozeScheduled) {
         const permission = await Notifications.getPermissionsAsync();
