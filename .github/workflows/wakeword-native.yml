@@ -1,0 +1,71 @@
+name: WakeWord native compile
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/wakeword-native.yml"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "package.json"
+      - "artifacts/wakeword/**"
+  push:
+    branches:
+      - feat/wakeword-voice-loop
+    paths:
+      - ".github/workflows/wakeword-native.yml"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "package.json"
+      - "artifacts/wakeword/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    name: Android native compile
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Check TypeScript
+        run: pnpm run typecheck
+      - name: Generate Android project
+        run: pnpm exec expo prebuild --clean --platform android --no-install
+        working-directory: artifacts/wakeword
+      - name: Compile Android app
+        run: ./gradlew assembleDebug
+        working-directory: artifacts/wakeword/android
+
+  ios:
+    name: iOS native compile
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Generate iOS project
+        run: pnpm exec expo prebuild --clean --platform ios --no-install
+        working-directory: artifacts/wakeword
+      - name: Install CocoaPods
+        run: pod install
+        working-directory: artifacts/wakeword/ios
+      - name: Compile iOS app
+        run: xcodebuild -workspace WakeWord.xcworkspace -scheme WakeWord -sdk iphonesimulator -configuration Debug CODE_SIGNING_ALLOWED=NO build
+        working-directory: artifacts/wakeword/ios
