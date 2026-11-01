@@ -678,7 +678,7 @@ export default function WakeWordHome() {
             <View style={styles.formSection}>
               <MyVoiceRecorder value={recordingUri} onChange={setRecordingUri} colors={colors} />
               <Text style={[styles.fieldHelp, { color: colors.mutedForeground, marginTop: 8 }]}>
-                Your recording loops while WakeWord is open. Native alarms need a custom iOS or Android build; iOS 26 uses its system alarm sound and shows your phrase, while Android can open WakeWord’s spoken loop when alarm and full-screen access are allowed.
+                Your recording loops while WakeWord is open. Native alarms need a custom iOS or Android build; iOS 26.1+ uses its system alarm sound and shows your phrase, while Android can open WakeWord’s spoken loop when alarm and full-screen access are allowed.
               </Text>
             </View>
 
@@ -800,7 +800,7 @@ export default function WakeWordHome() {
               </Pressable>
             ) : null}
             <Text style={[styles.deliveryNote, { color: colors.mutedForeground }]}>
-              With a native build, Android can launch the spoken loop at alarm time when exact-alarm and full-screen access are allowed. iOS 26 shows an AlarmKit lock-screen alarm with your phrase and a system sound; the custom voice starts when WakeWord is open. Older iOS versions use a system reminder.
+              With a native build, Android can launch the spoken loop at alarm time when exact-alarm and full-screen access are allowed. iOS 26.1+ shows an AlarmKit lock-screen alarm with your phrase and a system sound; iOS 26.0 and older versions use a system reminder. The custom voice starts when WakeWord is open.
             </Text>
 
             <View style={styles.alarmsHeading}>
