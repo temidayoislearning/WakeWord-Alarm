@@ -184,11 +184,18 @@ class WakeWordAlarmsModule : Module() {
 
   private fun cancelStored(context: Context, id: String) {
     val prefs = context.getSharedPreferences("wakeword-native-alarms", Context.MODE_PRIVATE)
+    // Disabling or deleting an alarm must also cancel any pending snooze.
+    val manager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+    val snooze = Intent(context, WakeWordAlarmReceiver::class.java).apply {
+      action = "${context.packageName}.WAKEWORD_SNOOZE"
+      data = Uri.parse("wakeword-snooze://$id")
+    }
+    PendingIntent.getBroadcast(context, stableRequestCode("$id-snooze", -1), snooze,
+      PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE)?.let(manager::cancel)
     val raw = prefs.getString(id, null) ?: return
     val item = org.json.JSONObject(raw)
     val days = item.optJSONArray("days")
     val records = if (days == null || days.length() == 0) listOf(-1) else (0 until days.length()).map { days.getInt(it) }
-    val manager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
     for (day in records) {
       val requestCode = stableRequestCode(id, day)
       val fire = Intent(context, WakeWordAlarmReceiver::class.java).apply {
