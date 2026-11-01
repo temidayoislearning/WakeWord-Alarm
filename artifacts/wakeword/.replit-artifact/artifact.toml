@@ -1,7 +1,7 @@
 kind = "mobile"
 previewPath = "/wakeword/"
 title = "WakeWord"
-description = "A cross-platform alarm app that wakes users by repeatedly speaking a custom phrase, with voice selection, repeat-day scheduling, snooze, and stop controls."
+description = "A cross-platform alarm app that schedules system reminders and repeats a chosen spoken phrase while the app is active, with voice recording, repeat-day scheduling, snooze, and stop controls."
 version = "1.0.0"
 id = "artifacts/wakeword"
 router = "expo-domain"
