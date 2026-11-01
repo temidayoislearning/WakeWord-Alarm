@@ -57,7 +57,8 @@ private func scheduleWakeWordSnooze(alarmID: String, phrase: String) async throw
   let manager = AlarmManager.shared
   let sourceID = wakeWordAlarmID(alarmID)
   if try manager.alarms.contains(where: { $0.id == sourceID }) {
-    try manager.stop(id: sourceID)
+    // The app may already have stopped the ringing system alarm.
+    try? manager.stop(id: sourceID)
   }
 
   let snoozeKey = "wakeword.snooze.\(alarmID)"
@@ -194,6 +195,11 @@ public final class WakeWordAlarmsModule: Module {
       let id = wakeWordAlarmID(alarmID)
       if try AlarmManager.shared.alarms.contains(where: { $0.id == id }) {
         try? AlarmManager.shared.stop(id: id)
+      }
+      if let raw = UserDefaults.standard.string(forKey: "wakeword.snooze.\(alarmID)"),
+         let snoozeID = UUID(uuidString: raw),
+         try AlarmManager.shared.alarms.contains(where: { $0.id == snoozeID }) {
+        try? AlarmManager.shared.stop(id: snoozeID)
       }
     }
 
