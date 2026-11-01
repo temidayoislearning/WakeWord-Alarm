@@ -27,7 +27,7 @@ import { MyVoiceRecorder } from '@/components/MyVoiceRecorder';
 import { VoiceModePicker } from '@/components/VoiceModePicker';
 import { VoiceModeId, getVoiceMode, speakWithVoiceMode } from '@/lib/voiceModes';
 import { cancelWakeAlarmNative, cancelWakeAlarmNotifications, scheduleWakeAlarm } from '@/lib/alarmNotifications';
-import { openNativeAlarmSettings, snoozeNativeAlarm, stopNativeRinging } from '@/modules/wakeword-alarms/src/WakeWordAlarms';
+import { acknowledgeDismissedOneTimeAlarms, getDismissedOneTimeAlarms, openNativeAlarmSettings, snoozeNativeAlarm, stopNativeRinging } from '@/modules/wakeword-alarms/src/WakeWordAlarms';
 
 type WakeAlarm = {
   id: string;
@@ -179,7 +179,21 @@ export default function WakeWordHome() {
           Array.isArray(item.days) &&
           Array.isArray(item.notificationIds),
       );
-      setAlarms(valid);
+      // AlarmKit may have stopped a one-time alarm while the app was closed.
+      // Persist first so a failed write does not lose the native dismissal.
+      const dismissed = Platform.OS === 'ios'
+        ? await getDismissedOneTimeAlarms().catch(() => [] as string[])
+        : [];
+      const reconciled = valid.map((alarm) =>
+        dismissed.includes(alarm.id) && alarm.days.length === 0
+          ? { ...alarm, enabled: false, notificationIds: [] }
+          : alarm,
+      );
+      if (dismissed.length) {
+        await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(reconciled));
+        await acknowledgeDismissedOneTimeAlarms(dismissed).catch(() => undefined);
+      }
+      setAlarms(reconciled);
       setLoaded(true);
     } catch {
       setLoadError(true);
@@ -244,6 +258,7 @@ export default function WakeWordHome() {
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (state: AppStateStatus) => {
+      if (state === 'active') void loadAlarms();
       if (state === 'active' && ringingRef.current) {
         if (ringingRef.current.recordingUri) {
           audioPlayer.play();
@@ -255,7 +270,7 @@ export default function WakeWordHome() {
       }
     });
     return () => subscription.remove();
-  }, [audioPlayer]);
+  }, [audioPlayer, loadAlarms]);
 
   useEffect(() => {
     if (!ringingAlarm) {
