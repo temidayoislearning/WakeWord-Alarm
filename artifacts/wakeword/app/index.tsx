@@ -419,8 +419,13 @@ export default function WakeWordHome() {
   const toggleAlarm = async (alarm: WakeAlarm, enabled: boolean) => {
     try {
       let notificationIds: string[] = [];
+      let warning: string | undefined;
       if (enabled) {
-        notificationIds = (await scheduleWakeAlarm(alarm)).notificationIds;
+        const result = await scheduleWakeAlarm(alarm);
+        notificationIds = result.notificationIds;
+        if (!result.notificationsAllowed || result.nativeAlarmReason) {
+          warning = result.nativeAlarmReason ?? 'Allow alarm access in Settings for alerts while WakeWord is closed.';
+        }
       } else {
         await cancelAlarmReminders(alarm);
       }
@@ -428,6 +433,12 @@ export default function WakeWordHome() {
         item.id === alarm.id ? { ...item, enabled, notificationIds } : item,
       );
       await persistAlarms(next);
+      if (warning && Platform.OS !== 'web') {
+        Alert.alert('Alarm access needed', warning, [
+          { text: 'Later', style: 'cancel' },
+          { text: 'Open settings', onPress: () => void openNativeAlarmSettings() },
+        ]);
+      }
     } catch {
       Alert.alert('Couldn’t update alarm', 'Please try switching it again.');
     }
