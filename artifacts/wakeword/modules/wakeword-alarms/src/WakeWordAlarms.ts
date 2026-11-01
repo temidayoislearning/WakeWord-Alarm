@@ -23,6 +23,8 @@ type WakeWordAlarmsNative = {
   stopRinging(id: string): Promise<void>;
   requestAlarmPermission(): Promise<boolean>;
   openAlarmSettings(): Promise<void>;
+  getDismissedOneTimeAlarms?(): Promise<string[]>;
+  acknowledgeDismissedOneTimeAlarms?(ids: string[]): Promise<void>;
 };
 
 let nativeModule: WakeWordAlarmsNative | null | undefined;
@@ -74,4 +76,14 @@ export async function requestNativeAlarmPermission() {
 export async function openNativeAlarmSettings() {
   const module = getNativeModule();
   if (module) await module.openAlarmSettings();
+}
+
+export async function getDismissedOneTimeAlarms() {
+  const module = getNativeModule();
+  return module?.getDismissedOneTimeAlarms ? module.getDismissedOneTimeAlarms() : [];
+}
+
+export async function acknowledgeDismissedOneTimeAlarms(ids: string[]) {
+  const module = getNativeModule();
+  if (module?.acknowledgeDismissedOneTimeAlarms) await module.acknowledgeDismissedOneTimeAlarms(ids);
 }
