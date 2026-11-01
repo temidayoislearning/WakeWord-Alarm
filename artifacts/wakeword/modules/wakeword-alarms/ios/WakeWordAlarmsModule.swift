@@ -8,6 +8,30 @@ import UIKit
 public struct WakeWordAlarmMetadata: AlarmMetadata {}
 
 @available(iOS 26.1, *)
+public struct WakeWordStopIntent: LiveActivityIntent {
+  public static var title: LocalizedStringResource = "Stop WakeWord"
+  public static var openAppWhenRun = false
+
+  @Parameter(title: "Alarm ID") public var alarmID: String
+  @Parameter(title: "Schedule token") public var token: String
+
+  public init() {}
+  public init(alarmID: String, token: String) {
+    self.alarmID = alarmID
+    self.token = token
+  }
+
+  public func perform() async throws -> some IntentResult {
+    let defaults = UserDefaults.standard
+    // Ignore an old stop action after the alarm has been rescheduled.
+    if defaults.string(forKey: "wakeword.oneTimeToken.\(alarmID)") == token {
+      defaults.set(token, forKey: "wakeword.dismissed.\(alarmID)")
+    }
+    return .result()
+  }
+}
+
+@available(iOS 26.1, *)
 public struct WakeWordSnoozeIntent: LiveActivityIntent {
   public static var title: LocalizedStringResource = "Snooze WakeWord"
   public static var openAppWhenRun = false
@@ -57,11 +81,17 @@ private func scheduleWakeWordSnooze(alarmID: String, phrase: String) async throw
     countdownDuration: nil,
     schedule: .fixed(Date().addingTimeInterval(5 * 60)),
     attributes: attributes,
-    stopIntent: nil,
+    stopIntent: wakeWordStopIntent(alarmID),
     secondaryIntent: WakeWordSnoozeIntent(alarmID: alarmID, phrase: phrase),
     sound: .default
   )
   _ = try await manager.schedule(id: snoozeID, configuration: snoozeConfiguration)
+}
+
+@available(iOS 26.1, *)
+private func wakeWordStopIntent(_ alarmID: String) -> WakeWordStopIntent? {
+  guard let token = UserDefaults.standard.string(forKey: "wakeword.oneTimeToken.\(alarmID)") else { return nil }
+  return WakeWordStopIntent(alarmID: alarmID, token: token)
 }
 
 @available(iOS 26.1, *)
@@ -105,6 +135,13 @@ public final class WakeWordAlarmsModule: Module {
       }
 
       let id = wakeWordAlarmID(alarmID)
+      let defaults = UserDefaults.standard
+      defaults.removeObject(forKey: "wakeword.dismissed.\(alarmID)")
+      if days.isEmpty {
+        defaults.set(UUID().uuidString, forKey: "wakeword.oneTimeToken.\(alarmID)")
+      } else {
+        defaults.removeObject(forKey: "wakeword.oneTimeToken.\(alarmID)")
+      }
       cancelWakeWordSnooze(alarmID)
       if try manager.alarms.contains(where: { $0.id == id }) {
         try manager.cancel(id: id)
@@ -137,7 +174,7 @@ public final class WakeWordAlarmsModule: Module {
         countdownDuration: nil,
         schedule: schedule,
         attributes: attributes,
-        stopIntent: nil,
+        stopIntent: wakeWordStopIntent(alarmID),
         secondaryIntent: WakeWordSnoozeIntent(alarmID: alarmID, phrase: phrase),
         sound: .default
       )
@@ -168,6 +205,22 @@ public final class WakeWordAlarmsModule: Module {
       }
       cancelWakeWordSnooze(alarmID)
       UserDefaults.standard.removeObject(forKey: Self.storageKey(for: alarmID))
+    }
+
+    AsyncFunction("getDismissedOneTimeAlarms") { () -> [String] in
+      let defaults = UserDefaults.standard
+      let prefix = "wakeword.dismissed."
+      return defaults.dictionaryRepresentation().keys.compactMap { key in
+        guard key.hasPrefix(prefix), let token = defaults.string(forKey: key) else { return nil }
+        let alarmID = String(key.dropFirst(prefix.count))
+        return defaults.string(forKey: "wakeword.oneTimeToken.\(alarmID)") == token ? alarmID : nil
+      }
+    }
+
+    AsyncFunction("acknowledgeDismissedOneTimeAlarms") { (ids: [String]) in
+      for id in ids {
+        UserDefaults.standard.removeObject(forKey: "wakeword.dismissed.\(id)")
+      }
     }
 
     AsyncFunction("requestAlarmPermission") { () async -> Bool in
