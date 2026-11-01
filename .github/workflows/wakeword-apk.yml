@@ -1,0 +1,41 @@
+name: Android installable preview
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/wakeword-apk.yml"
+      - "artifacts/wakeword/**"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "package.json"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  apk:
+    name: Build Android preview APK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Generate Android app
+        run: pnpm exec expo prebuild --clean --platform android --no-install
+        working-directory: artifacts/wakeword
+      - name: Build installable preview
+        run: ./gradlew assembleRelease
+        working-directory: artifacts/wakeword/android
+      - uses: actions/upload-artifact@v4
+        with:
+          name: WakeWord-Android-preview
+          path: artifacts/wakeword/android/app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+          retention-days: 7
