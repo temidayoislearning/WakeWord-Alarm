@@ -203,7 +203,7 @@ public final class WakeWordAlarmsModule: Module {
 private func cancelWakeWordSnooze(_ alarmID: String) {
   let key = "wakeword.snooze.\(alarmID)"
   guard let raw = UserDefaults.standard.string(forKey: key), let id = UUID(uuidString: raw) else { return }
-  if try AlarmManager.shared.alarms.contains(where: { $0.id == id }) {
+  if (try? AlarmManager.shared.alarms.contains(where: { $0.id == id })) == true {
     try? AlarmManager.shared.cancel(id: id)
   }
   UserDefaults.standard.removeObject(forKey: key)
