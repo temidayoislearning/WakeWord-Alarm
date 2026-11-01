@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.provider.Settings
 import androidx.core.app.NotificationManagerCompat
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
@@ -111,7 +112,7 @@ class WakeWordAlarmsModule : Module() {
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
         val manager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         if (!manager.canScheduleExactAlarms()) {
-          context.startActivity(Intent(AlarmManager.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
+          context.startActivity(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
             data = Uri.parse("package:${context.packageName}")
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
           })
@@ -122,12 +123,12 @@ class WakeWordAlarmsModule : Module() {
     }
 
     AsyncFunction("openAlarmSettings") {
-      val context = appContext.reactContext ?: return@AsyncFunction
+      val context = appContext.reactContext ?: return@AsyncFunction null
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
         val manager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         val notifications = context.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
         val action = when {
-          !manager.canScheduleExactAlarms() -> AlarmManager.ACTION_REQUEST_SCHEDULE_EXACT_ALARM
+          !manager.canScheduleExactAlarms() -> Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM
           Build.VERSION.SDK_INT >= 34 && !notifications.canUseFullScreenIntent() -> "android.settings.MANAGE_APP_USE_FULL_SCREEN_INTENT"
           !NotificationManagerCompat.from(context).areNotificationsEnabled() -> "android.settings.APP_NOTIFICATION_SETTINGS"
           else -> "android.settings.APPLICATION_DETAILS_SETTINGS"
@@ -141,6 +142,7 @@ class WakeWordAlarmsModule : Module() {
           addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         })
       }
+      null
     }
   }
 
