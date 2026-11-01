@@ -20,7 +20,18 @@ class WakeWordAlarmReceiver : BroadcastReceiver() {
     val hour = intent.getIntExtra("hour", -1)
     val minute = intent.getIntExtra("minute", -1)
     val day = intent.getIntExtra("day", -1)
-    if (day >= 0 && hour >= 0 && minute >= 0) scheduleNextWeekly(context, id, phrase, hour, minute, day)
+    if (day >= 0 && hour >= 0 && minute >= 0) {
+      scheduleNextWeekly(context, id, phrase, hour, minute, day)
+    } else if (intent.action == "${context.packageName}.WAKEWORD_ALARM") {
+      // A one-time alarm has fired. Do not restore it after a reboot or time change.
+      val prefs = context.getSharedPreferences("wakeword-native-alarms", Context.MODE_PRIVATE)
+      val raw = prefs.getString(id, null)
+      val isOneTime = raw != null && runCatching {
+        val days = org.json.JSONObject(raw).optJSONArray("days")
+        days == null || days.length() == 0
+      }.getOrDefault(false)
+      if (isOneTime) prefs.edit().remove(id).apply()
+    }
     postAlarmNotification(context, id, phrase)
   }
 
