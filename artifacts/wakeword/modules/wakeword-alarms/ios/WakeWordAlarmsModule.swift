@@ -4,10 +4,10 @@ import ExpoModulesCore
 import SwiftUI
 import UIKit
 
-@available(iOS 26.0, *)
+@available(iOS 26.1, *)
 public struct WakeWordAlarmMetadata: AlarmMetadata {}
 
-@available(iOS 26.0, *)
+@available(iOS 26.1, *)
 public struct WakeWordSnoozeIntent: LiveActivityIntent {
   public static var title: LocalizedStringResource = "Snooze WakeWord"
   public static var openAppWhenRun = false
@@ -28,18 +28,18 @@ public struct WakeWordSnoozeIntent: LiveActivityIntent {
   }
 }
 
-@available(iOS 26.0, *)
+@available(iOS 26.1, *)
 private func scheduleWakeWordSnooze(alarmID: String, phrase: String) async throws {
   let manager = AlarmManager.shared
   let sourceID = wakeWordAlarmID(alarmID)
-  if manager.alarms.contains(where: { $0.id == sourceID }) {
+  if try manager.alarms.contains(where: { $0.id == sourceID }) {
     try manager.stop(id: sourceID)
   }
 
   let snoozeKey = "wakeword.snooze.\(alarmID)"
   let snoozeID = UserDefaults.standard.string(forKey: snoozeKey).flatMap(UUID.init(uuidString:)) ?? UUID()
   UserDefaults.standard.set(snoozeID.uuidString, forKey: snoozeKey)
-  if manager.alarms.contains(where: { $0.id == snoozeID }) {
+  if try manager.alarms.contains(where: { $0.id == snoozeID }) {
     try manager.cancel(id: snoozeID)
   }
 
@@ -64,7 +64,7 @@ private func scheduleWakeWordSnooze(alarmID: String, phrase: String) async throw
   _ = try await manager.schedule(id: snoozeID, configuration: snoozeConfiguration)
 }
 
-@available(iOS 26.0, *)
+@available(iOS 26.1, *)
 private func wakeWordAlarmID(_ key: String) -> UUID {
   let storageKey = "wakeword.alarmkit.\(key)"
   if let raw = UserDefaults.standard.string(forKey: storageKey), let id = UUID(uuidString: raw) { return id }
@@ -78,13 +78,13 @@ public final class WakeWordAlarmsModule: Module {
     Name("WakeWordAlarms")
 
     AsyncFunction("scheduleAlarm") { (input: [String: Any]) async throws -> [String: Any] in
-      guard #available(iOS 26.0, *) else {
+      guard #available(iOS 26.1, *) else {
         return [
           "available": false,
           "scheduled": false,
           "permissionGranted": false,
           "platform": "ios",
-          "reason": "Native iPhone alarms require iOS 26 or later."
+          "reason": "Native iPhone alarms require iOS 26.1 or later."
         ]
       }
       let alarmID = input["id"] as? String ?? UUID().uuidString
@@ -106,7 +106,7 @@ public final class WakeWordAlarmsModule: Module {
 
       let id = wakeWordAlarmID(alarmID)
       cancelWakeWordSnooze(alarmID)
-      if manager.alarms.contains(where: { $0.id == id }) {
+      if try manager.alarms.contains(where: { $0.id == id }) {
         try manager.cancel(id: id)
       }
       let schedule: Alarm.Schedule
@@ -147,23 +147,23 @@ public final class WakeWordAlarmsModule: Module {
     }
 
     AsyncFunction("snoozeAlarm") { (alarmID: String, phrase: String) async throws -> Bool in
-      guard #available(iOS 26.0, *) else { return false }
+      guard #available(iOS 26.1, *) else { return false }
       try await scheduleWakeWordSnooze(alarmID: alarmID, phrase: phrase)
       return true
     }
 
     AsyncFunction("stopRinging") { (alarmID: String) throws in
-      guard #available(iOS 26.0, *) else { return }
+      guard #available(iOS 26.1, *) else { return }
       let id = wakeWordAlarmID(alarmID)
-      if AlarmManager.shared.alarms.contains(where: { $0.id == id }) {
+      if try AlarmManager.shared.alarms.contains(where: { $0.id == id }) {
         try? AlarmManager.shared.stop(id: id)
       }
     }
 
     AsyncFunction("cancelAlarm") { (alarmID: String) async throws in
-      guard #available(iOS 26.0, *) else { return }
+      guard #available(iOS 26.1, *) else { return }
       guard let raw = UserDefaults.standard.string(forKey: Self.storageKey(for: alarmID)), let id = UUID(uuidString: raw) else { return }
-      if AlarmManager.shared.alarms.contains(where: { $0.id == id }) {
+      if try AlarmManager.shared.alarms.contains(where: { $0.id == id }) {
         try AlarmManager.shared.cancel(id: id)
       }
       cancelWakeWordSnooze(alarmID)
@@ -171,7 +171,7 @@ public final class WakeWordAlarmsModule: Module {
     }
 
     AsyncFunction("requestAlarmPermission") { () async -> Bool in
-      guard #available(iOS 26.0, *) else { return false }
+      guard #available(iOS 26.1, *) else { return false }
       do { return try await AlarmManager.shared.requestAuthorization() == .authorized }
       catch { return false }
     }
@@ -182,7 +182,7 @@ public final class WakeWordAlarmsModule: Module {
     }
   }
 
-  @available(iOS 26.0, *)
+  @available(iOS 26.1, *)
   private static func weekday(forMondayFirstIndex day: Int) -> Locale.Weekday? {
     switch day {
     case 0: return .monday
@@ -199,11 +199,11 @@ public final class WakeWordAlarmsModule: Module {
   private static func storageKey(for id: String) -> String { "wakeword.alarmkit.\(id)" }
 }
 
-@available(iOS 26.0, *)
+@available(iOS 26.1, *)
 private func cancelWakeWordSnooze(_ alarmID: String) {
   let key = "wakeword.snooze.\(alarmID)"
   guard let raw = UserDefaults.standard.string(forKey: key), let id = UUID(uuidString: raw) else { return }
-  if AlarmManager.shared.alarms.contains(where: { $0.id == id }) {
+  if try AlarmManager.shared.alarms.contains(where: { $0.id == id }) {
     try? AlarmManager.shared.cancel(id: id)
   }
   UserDefaults.standard.removeObject(forKey: key)
