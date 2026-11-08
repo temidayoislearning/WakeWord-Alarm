@@ -91,7 +91,7 @@ export function VoiceModePicker({ value, onChange, voiceId, onVoiceChange, phras
         <View style={styles.accentCopy}>
           <Text style={[styles.accentLabel, { color: colors.foreground }]}>Accent & voice</Text>
           <Text style={[styles.accentDetail, { color: colors.mutedForeground }]}>
-            {loading ? 'Finding your voices…' : selected ? `${accentName(selected.language)} · Voice ${selectedIndex}` : voiceId ? 'Saved voice unavailable · using default' : 'Device default'}
+            {loading ? 'Finding your voices…' : selected ? `${accentName(selected.language)} · Voice ${selectedIndex}` : voiceId ? 'Saved voice unavailable · using default' : 'US English default'}
           </Text>
         </View>
         <Feather name={expanded ? 'chevron-up' : 'chevron-down'} size={19} color={colors.mutedForeground} />
@@ -105,7 +105,7 @@ export function VoiceModePicker({ value, onChange, voiceId, onVoiceChange, phras
           </Text>
           <Pressable accessibilityRole="radio" accessibilityState={{ selected: !voiceId }} onPress={() => onVoiceChange(undefined)}
             style={[styles.voiceRow, { borderColor: colors.border }]}>
-            <Text style={[styles.voiceName, { color: colors.foreground }]}>Device default</Text>
+            <Text style={[styles.voiceName, { color: colors.foreground }]}>US English default</Text>
             {!voiceId ? <Feather name="check-circle" size={18} color={colors.primary} /> : null}
           </Pressable>
           {accents.length ? (
