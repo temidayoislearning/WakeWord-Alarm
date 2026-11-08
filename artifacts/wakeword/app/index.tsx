@@ -972,7 +972,7 @@ export default function WakeWordHome() {
             )}
             <View style={styles.footer}>
               <Feather name="shield" size={13} color={colors.mutedForeground} />
-              <Text style={[styles.footerText, { color: colors.mutedForeground }]}>Your phrases stay on this device.</Text>
+              <Text style={[styles.footerText, { color: colors.mutedForeground }]}>Online voices may send phrases to your speech provider.</Text>
             </View>
           </ScrollView>
         )}
