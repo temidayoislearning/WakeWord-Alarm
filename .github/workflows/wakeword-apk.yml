@@ -1,0 +1,94 @@
+name: Android installable preview
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/wakeword-apk.yml"
+      - "artifacts/wakeword/**"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "package.json"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  apk:
+    name: Build Android preview APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Generate Android app
+        run: pnpm exec expo prebuild --clean --platform android --no-install
+        working-directory: artifacts/wakeword
+      - name: Build installable preview
+        run: ./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a,x86_64 --no-daemon --max-workers=2
+        working-directory: artifacts/wakeword/android
+      - uses: actions/upload-artifact@v4
+        with:
+          name: WakeWord-Android-preview
+          path: artifacts/wakeword/android/app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+          retention-days: 7
+
+  startup-test:
+    name: Verify app opens on Android
+    needs: apk
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: WakeWord-Android-preview
+          path: preview
+      - name: Enable emulator acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Open app and verify main screen
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          disable-animations: true
+          script: |
+            adb install preview/app-release.apk
+            adb logcat -c
+            adb shell monkey -p com.temidayoislearning.wakeword 1
+            sleep 30
+            adb shell uiautomator dump /sdcard/view.xml
+            adb pull /sdcard/view.xml startup-view.xml
+            adb logcat -d -v brief -s ReactNativeJS ReactNative AndroidRuntime > startup-log.txt
+            cat startup-log.txt
+            cat startup-view.xml
+            if grep -q "Something went wrong" startup-view.xml; then exit 1; fi
+            if ! grep -q "SET YOUR ALARM" startup-view.xml; then exit 1; fi
+            adb shell input swipe 160 540 160 250 500
+            sleep 2
+            adb shell uiautomator dump /sdcard/voice.xml
+            adb shell cat /sdcard/voice.xml > voice-before.xml
+            python3 -c 'import xml.etree.ElementTree as E,re,subprocess; n=next(x for x in E.parse("voice-before.xml").iter() if x.get("text")=="Accent & voice"); a=list(map(int,re.findall("[0-9]+",n.get("bounds")))); subprocess.run(["adb","shell","input","tap",str((a[0]+a[2])//2),str((a[1]+a[3])//2)],check=True)'
+            sleep 3
+            adb shell uiautomator dump /sdcard/voice-open.xml
+            adb shell cat /sdcard/voice-open.xml > voice-open.xml
+            if ! grep -q "Available accents" voice-open.xml; then exit 1; fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: wakeword-startup-check
+          path: |
+            startup-log.txt
+            startup-view.xml
+            voice-open.xml
+          if-no-files-found: ignore

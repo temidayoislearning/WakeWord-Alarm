@@ -57,6 +57,9 @@
   "dependencies": {
     "expo-audio": "~57.0.5",
     "expo-notifications": "~57.0.21",
-    "expo-speech": "~57.0.3"
+    "expo-speech": "~57.0.3",
+    "expo": "~57.0.26",
+    "react": "19.2.3",
+    "react-native": "0.86.3"
   }
 }

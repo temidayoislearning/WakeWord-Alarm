@@ -1,0 +1,54 @@
+name: Android startup investigation
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/wakeword-launch-test.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  launch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Download the preview installed by the user
+        uses: actions/download-artifact@v4
+        with:
+          name: WakeWord-Android-preview
+          run-id: 41344562428
+          github-token: ${{ github.token }}
+          path: preview
+      - name: Enable emulator acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Launch preview and capture error
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          disable-animations: true
+          script: |
+            adb install preview/app-release.apk
+            adb logcat -c
+            adb shell monkey -p com.temidayoislearning.wakeword 1
+            sleep 30
+            adb logcat -d -v brief -s ReactNativeJS ReactNative AndroidRuntime > startup-log.txt
+            adb shell uiautomator dump /sdcard/view.xml
+            adb pull /sdcard/view.xml startup-view.xml
+            cat startup-log.txt
+            cat startup-view.xml
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wakeword-startup-diagnostics
+          path: |
+            startup-log.txt
+            startup-view.xml
+          if-no-files-found: ignore

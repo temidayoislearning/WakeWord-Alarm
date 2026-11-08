@@ -3,6 +3,7 @@ import { Feather, Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import * as Notifications from 'expo-notifications';
 import * as Speech from 'expo-speech';
+import { useAudioPlayer } from 'expo-audio';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -10,6 +11,7 @@ import {
   Animated,
   AppState,
   AppStateStatus,
+  Linking,
   Platform,
   Pressable,
   ScrollView,
@@ -21,15 +23,20 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
-
-type VoiceMode = 'gentle' | 'focused' | 'energized';
+import { MyVoiceRecorder } from '@/components/MyVoiceRecorder';
+import { VoiceModePicker } from '@/components/VoiceModePicker';
+import { VoiceModeId, getVoiceMode, speakWithVoiceMode } from '@/lib/voiceModes';
+import { cancelWakeAlarmNative, cancelWakeAlarmNotifications, scheduleWakeAlarm } from '@/lib/alarmNotifications';
+import { acknowledgeDismissedOneTimeAlarms, getDismissedOneTimeAlarms, openNativeAlarmSettings, snoozeNativeAlarm, startNativeAlarmAudio, stopNativeRinging, syncNativeAlarmAudioSettings } from '@/modules/wakeword-alarms/src/WakeWordAlarms';
 
 type WakeAlarm = {
   id: string;
   hour: number;
   minute: number;
   phrase: string;
-  voiceMode: VoiceMode;
+  voiceMode: VoiceModeId;
+  recordingUri?: string;
+  voiceId?: string;
   days: number[];
   enabled: boolean;
   notificationIds: string[];
@@ -46,18 +53,7 @@ const WEEKDAYS = [
   { short: 'S', name: 'Sunday', day: 6 },
 ];
 
-const VOICES: {
-  id: VoiceMode;
-  label: string;
-  detail: string;
-  icon: keyof typeof Feather.glyphMap;
-  rate: number;
-  pitch: number;
-}[] = [
-  { id: 'gentle', label: 'Gentle', detail: 'Soft & steady', icon: 'wind', rate: 0.82, pitch: 0.96 },
-  { id: 'focused', label: 'Focused', detail: 'Clear & calm', icon: 'target', rate: 0.96, pitch: 1 },
-  { id: 'energized', label: 'Energized', detail: 'Bright & quick', icon: 'zap', rate: 1.08, pitch: 1.08 },
-];
+const DEFAULT_VOICE: VoiceModeId = 'focused';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -89,87 +85,6 @@ function formatDays(days: number[]) {
   return WEEKDAYS.filter(({ day }) => days.includes(day))
     .map(({ short }) => short)
     .join(' · ');
-}
-
-function toNotificationWeekday(day: number) {
-  // JavaScript's Sunday-first day index is used by calendar notifications.
-  return ((day + 1) % 7) + 1;
-}
-
-async function ensureNotificationsAllowed() {
-  if (Platform.OS === 'web') return false;
-  if (Platform.OS === 'android') {
-    await Notifications.setNotificationChannelAsync('wakeword-alarms', {
-      name: 'WakeWord alarms',
-      importance: Notifications.AndroidImportance.MAX,
-      vibrationPattern: [0, 350, 180, 350],
-      sound: 'default',
-      lightColor: '#E66B4E',
-    });
-  }
-
-  const current = await Notifications.getPermissionsAsync();
-  if (current.granted) return true;
-  const requested = await Notifications.requestPermissionsAsync();
-  return requested.granted;
-}
-
-async function scheduleAlarmNotifications(alarm: WakeAlarm) {
-  const granted = await ensureNotificationsAllowed();
-  if (!granted) return [];
-
-  const content: Notifications.NotificationContentInput = {
-    title: 'WakeWord alarm',
-    body: alarm.phrase,
-    sound: 'default',
-    data: { alarmId: alarm.id },
-    ...(Platform.OS === 'ios' ? { interruptionLevel: 'timeSensitive' as const } : {}),
-  };
-
-  if (alarm.days.length === 0) {
-    const next = new Date();
-    next.setHours(alarm.hour, alarm.minute, 0, 0);
-    if (next.getTime() <= Date.now()) next.setDate(next.getDate() + 1);
-    const id = await Notifications.scheduleNotificationAsync({
-      content,
-      trigger: {
-        type: Notifications.SchedulableTriggerInputTypes.DATE,
-        date: next,
-        ...(Platform.OS === 'android' ? { channelId: 'wakeword-alarms' } : {}),
-      },
-    });
-    return [id];
-  }
-
-  return Promise.all(
-    alarm.days.map((day) =>
-      Notifications.scheduleNotificationAsync({
-        content,
-        trigger:
-          Platform.OS === 'android'
-            ? {
-                type: Notifications.SchedulableTriggerInputTypes.WEEKLY,
-                weekday: toNotificationWeekday(day),
-                hour: alarm.hour,
-                minute: alarm.minute,
-                channelId: 'wakeword-alarms',
-              }
-            : {
-                type: Notifications.SchedulableTriggerInputTypes.CALENDAR,
-                weekday: toNotificationWeekday(day),
-                hour: alarm.hour,
-                minute: alarm.minute,
-                repeats: true,
-              },
-      }),
-    ),
-  );
-}
-
-async function cancelNotifications(ids: string[]) {
-  await Promise.all(
-    ids.map((id) => Notifications.cancelScheduledNotificationAsync(id)),
-  );
 }
 
 function PulseMark({ color }: { color: string }) {
@@ -226,10 +141,16 @@ export default function WakeWordHome() {
   const [minute, setMinute] = useState(0);
   const [isPM, setIsPM] = useState(false);
   const [phrase, setPhrase] = useState('');
-  const [voiceMode, setVoiceMode] = useState<VoiceMode>('focused');
+  const [voiceMode, setVoiceMode] = useState<VoiceModeId>(DEFAULT_VOICE);
+  const [voiceId, setVoiceId] = useState<string | undefined>();
+  const [recordingUri, setRecordingUri] = useState<string | undefined>();
+  const [recordingExpanded, setRecordingExpanded] = useState(false);
   const [days, setDays] = useState<number[]>([0, 1, 2, 3, 4]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [ringingAlarm, setRingingAlarm] = useState<WakeAlarm | null>(null);
+  const [nativeVoiceActive, setNativeVoiceActive] = useState(false);
+  const startingAlarmRef = useRef<string | null>(null);
+  const audioPlayer = useAudioPlayer(null);
 
   const alarmsRef = useRef(alarms);
   const ringingRef = useRef(ringingAlarm);
@@ -263,7 +184,24 @@ export default function WakeWordHome() {
           Array.isArray(item.days) &&
           Array.isArray(item.notificationIds),
       );
-      setAlarms(valid);
+      // AlarmKit may have stopped a one-time alarm while the app was closed.
+      // Persist first so a failed write does not lose the native dismissal.
+      const dismissed = Platform.OS === 'ios'
+        ? await getDismissedOneTimeAlarms().catch(() => [] as string[])
+        : [];
+      const reconciled = valid.map((alarm) =>
+        dismissed.includes(alarm.id) && alarm.days.length === 0
+          ? { ...alarm, enabled: false, notificationIds: [] }
+          : alarm,
+      );
+      if (dismissed.length) {
+        await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(reconciled));
+        await acknowledgeDismissedOneTimeAlarms(dismissed).catch(() => undefined);
+      }
+      if (Platform.OS === 'android') {
+        await Promise.all(reconciled.map((alarm) => syncNativeAlarmAudioSettings(alarm).catch(() => undefined)));
+      }
+      setAlarms(reconciled);
       setLoaded(true);
     } catch {
       setLoadError(true);
@@ -281,9 +219,17 @@ export default function WakeWordHome() {
   }, []);
 
   const startRinging = useCallback((alarm: WakeAlarm) => {
-    if (!alarm.enabled || ringingRef.current?.id === alarm.id) return;
-    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => undefined);
-    setRingingAlarm(alarm);
+    if (!alarm.enabled || ringingRef.current?.id === alarm.id || startingAlarmRef.current === alarm.id) return;
+    startingAlarmRef.current = alarm.id;
+    void (async () => {
+      const nativeStarted = Platform.OS === 'android'
+        ? await startNativeAlarmAudio(alarm).catch(() => false)
+        : false;
+      setNativeVoiceActive(nativeStarted);
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => undefined);
+      setRingingAlarm(alarm);
+      startingAlarmRef.current = null;
+    })();
   }, []);
 
   useEffect(() => {
@@ -313,38 +259,77 @@ export default function WakeWordHome() {
   }, [loaded, startRinging]);
 
   useEffect(() => {
+    if (!loaded || Platform.OS === 'web') return;
+    const handleAlarmUrl = (url: string | null) => {
+      if (!url) return;
+      const match = url.match(/[?&]alarmId=([^&]+)/);
+      if (!match) return;
+      const alarm = alarmsRef.current.find((item) => item.id === decodeURIComponent(match[1]) && item.enabled);
+      if (alarm) startRinging(alarm);
+    };
+    void Linking.getInitialURL().then(handleAlarmUrl);
+    const subscription = Linking.addEventListener('url', ({ url }) => handleAlarmUrl(url));
+    return () => subscription.remove();
+  }, [loaded, startRinging]);
+
+  useEffect(() => {
     const subscription = AppState.addEventListener('change', (state: AppStateStatus) => {
-      if (state === 'active' && ringingRef.current) {
+      if (state === 'active') void loadAlarms();
+      if (state === 'active' && ringingRef.current && !nativeVoiceActive) {
+        if (ringingRef.current.recordingUri) {
+          audioPlayer.play();
+          return;
+        }
         void Speech.isSpeakingAsync().then((speaking) => {
           if (!speaking) speechLoopRef.current();
         });
       }
     });
     return () => subscription.remove();
-  }, []);
+  }, [audioPlayer, loadAlarms, nativeVoiceActive]);
 
   useEffect(() => {
     if (!ringingAlarm) {
       speechLoopRef.current = () => undefined;
       Speech.stop();
+      audioPlayer.pause();
       if (speechTimeoutRef.current) clearTimeout(speechTimeoutRef.current);
       return;
     }
 
-    const selectedVoice = VOICES.find((voice) => voice.id === ringingAlarm.voiceMode) ?? VOICES[1];
+    if (nativeVoiceActive) {
+      Speech.stop();
+      audioPlayer.pause();
+      return;
+    }
+
+    if (ringingAlarm.recordingUri) {
+      Speech.stop();
+      audioPlayer.replace(ringingAlarm.recordingUri);
+      audioPlayer.loop = true;
+      audioPlayer.volume = 1;
+      const startPlayback = setTimeout(() => audioPlayer.play(), 180);
+      return () => {
+        clearTimeout(startPlayback);
+        audioPlayer.pause();
+      };
+    }
+
+    const selectedVoice = getVoiceMode(ringingAlarm.voiceMode);
     const speakAgain = () => {
       if (ringingRef.current?.id !== ringingAlarm.id) return;
-      Speech.speak(ringingAlarm.phrase, {
-        language: 'en-US',
-        rate: selectedVoice.rate,
-        pitch: selectedVoice.pitch,
-        volume: 1,
+      void speakWithVoiceMode(ringingAlarm.phrase, ringingAlarm.voiceMode, {
         onDone: () => {
           if (ringingRef.current?.id === ringingAlarm.id) {
-            speechTimeoutRef.current = setTimeout(speakAgain, 900);
+            speechTimeoutRef.current = setTimeout(speakAgain, selectedVoice.repeatDelayMs);
           }
         },
-      });
+        onError: () => {
+          if (ringingRef.current?.id === ringingAlarm.id) {
+            speechTimeoutRef.current = setTimeout(speakAgain, selectedVoice.repeatDelayMs);
+          }
+        },
+      }, ringingAlarm.voiceId);
     };
     speechLoopRef.current = speakAgain;
     speakAgain();
@@ -353,7 +338,7 @@ export default function WakeWordHome() {
       if (speechTimeoutRef.current) clearTimeout(speechTimeoutRef.current);
       Speech.stop();
     };
-  }, [ringingAlarm]);
+  }, [ringingAlarm, audioPlayer, nativeVoiceActive]);
 
   useEffect(() => {
     if (!loaded) return;
@@ -375,6 +360,15 @@ export default function WakeWordHome() {
     return () => clearInterval(timer);
   }, [loaded, startRinging]);
 
+  const shiftTime = (deltaMinutes: number) => {
+    const current = (hour12 % 12 + (isPM ? 12 : 0)) * 60 + minute;
+    const next = (current + deltaMinutes + 1440) % 1440;
+    const nextHour = Math.floor(next / 60);
+    setHour12(nextHour % 12 || 12);
+    setIsPM(nextHour >= 12);
+    setMinute(next % 60);
+  };
+
   const chooseDay = (day: number) => {
     void Haptics.selectionAsync().catch(() => undefined);
     setDays((current) =>
@@ -388,7 +382,8 @@ export default function WakeWordHome() {
   };
 
   const cancelAlarmReminders = async (alarm: WakeAlarm) => {
-    if (alarm.notificationIds.length) await cancelNotifications(alarm.notificationIds);
+    if (alarm.notificationIds.length) await cancelWakeAlarmNotifications(alarm.notificationIds);
+    await cancelWakeAlarmNative(alarm.id);
   };
 
   const saveAlarm = async () => {
@@ -409,32 +404,43 @@ export default function WakeWordHome() {
         minute,
         phrase: cleanPhrase,
         voiceMode,
+        voiceId,
+        recordingUri,
         days: [...days].sort(),
         enabled: true,
         notificationIds: [],
       };
 
-      let notificationIds: string[] = [];
-      let notificationsReady = false;
+      let notificationResult = {
+        notificationIds: [] as string[],
+        notificationsAllowed: false,
+        nativeAlarmAvailable: false,
+        nativeAlarmScheduled: false,
+        nativeAlarmReason: undefined as string | undefined,
+      };
       try {
-        notificationIds = await scheduleAlarmNotifications(alarm);
-        notificationsReady = notificationIds.length > 0;
+        notificationResult = await scheduleWakeAlarm(alarm);
       } catch {
-        notificationsReady = false;
+        // Keep the alarm saved and explain that only in-app timing is available.
       }
 
-      const savedAlarm = { ...alarm, notificationIds };
+      const savedAlarm = { ...alarm, notificationIds: notificationResult.notificationIds };
       const next = previous
         ? alarms.map((item) => (item.id === id ? savedAlarm : item))
         : [...alarms, savedAlarm];
       await persistAlarms(next);
       setEditingId(null);
       setPhrase('');
+      setRecordingUri(undefined);
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
-      if (!notificationsReady && Platform.OS !== 'web') {
+      if ((!notificationResult.notificationsAllowed || notificationResult.nativeAlarmReason) && Platform.OS !== 'web') {
         Alert.alert(
           'Alarm saved',
-          'WakeWord can speak this phrase while the app is open. Allow notifications in Settings for a reminder when it is closed.',
+          notificationResult.nativeAlarmReason ?? 'Allow alarm access in Settings for reliable alerts while WakeWord is closed. Without it, the alarm can only ring while the app is open.',
+          [
+            { text: 'Later', style: 'cancel' },
+            { text: 'Open settings', onPress: () => void openNativeAlarmSettings() },
+          ],
         );
       }
     } catch {
@@ -451,6 +457,9 @@ export default function WakeWordHome() {
     setIsPM(alarm.hour >= 12);
     setPhrase(alarm.phrase);
     setVoiceMode(alarm.voiceMode);
+    setVoiceId(alarm.voiceId);
+    setRecordingUri(alarm.recordingUri);
+    setRecordingExpanded(Boolean(alarm.recordingUri));
     setDays([...alarm.days]);
     void Haptics.selectionAsync().catch(() => undefined);
   };
@@ -458,8 +467,13 @@ export default function WakeWordHome() {
   const toggleAlarm = async (alarm: WakeAlarm, enabled: boolean) => {
     try {
       let notificationIds: string[] = [];
+      let warning: string | undefined;
       if (enabled) {
-        notificationIds = await scheduleAlarmNotifications({ ...alarm, enabled: true });
+        const result = await scheduleWakeAlarm(alarm);
+        notificationIds = result.notificationIds;
+        if (!result.notificationsAllowed || result.nativeAlarmReason) {
+          warning = result.nativeAlarmReason ?? 'Allow alarm access in Settings for alerts while WakeWord is closed.';
+        }
       } else {
         await cancelAlarmReminders(alarm);
       }
@@ -467,6 +481,12 @@ export default function WakeWordHome() {
         item.id === alarm.id ? { ...item, enabled, notificationIds } : item,
       );
       await persistAlarms(next);
+      if (warning && Platform.OS !== 'web') {
+        Alert.alert('Alarm access needed', warning, [
+          { text: 'Later', style: 'cancel' },
+          { text: 'Open settings', onPress: () => void openNativeAlarmSettings() },
+        ]);
+      }
     } catch {
       Alert.alert('Couldn’t update alarm', 'Please try switching it again.');
     }
@@ -502,6 +522,8 @@ export default function WakeWordHome() {
     if (!alarm) return;
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
     Speech.stop();
+    audioPlayer.pause();
+    await stopNativeRinging(alarm.id).catch(() => undefined);
     if (snoozeTimeoutRef.current) clearTimeout(snoozeTimeoutRef.current);
     if (snoozeNotificationRef.current) {
       await Notifications.cancelScheduledNotificationAsync(snoozeNotificationRef.current).catch(() => undefined);
@@ -514,6 +536,7 @@ export default function WakeWordHome() {
       );
       await persistAlarms(next).catch(() => undefined);
     }
+    setNativeVoiceActive(false);
     setRingingAlarm(null);
   };
 
@@ -522,27 +545,34 @@ export default function WakeWordHome() {
     if (!alarm) return;
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => undefined);
     Speech.stop();
+    audioPlayer.pause();
     if (speechTimeoutRef.current) clearTimeout(speechTimeoutRef.current);
     if (snoozeTimeoutRef.current) clearTimeout(snoozeTimeoutRef.current);
+    setNativeVoiceActive(false);
     setRingingAlarm(null);
 
     const wakeAt = Date.now() + 5 * 60 * 1000;
+    await stopNativeRinging(alarm.id).catch(() => undefined);
+    const nativeSnoozeScheduled = await snoozeNativeAlarm(alarm.id, alarm.phrase).catch(() => false);
     try {
-      const allowed = await ensureNotificationsAllowed();
-      if (allowed) {
-        snoozeNotificationRef.current = await Notifications.scheduleNotificationAsync({
-          content: {
-            title: 'Time to get up',
-            body: alarm.phrase,
-            sound: 'default',
-            data: { alarmId: alarm.id },
-          },
-          trigger: {
-            type: Notifications.SchedulableTriggerInputTypes.DATE,
-            date: new Date(wakeAt),
-            ...(Platform.OS === 'android' ? { channelId: 'wakeword-alarms' } : {}),
-          },
-        });
+      if (!nativeSnoozeScheduled) {
+        const permission = await Notifications.getPermissionsAsync();
+        const permissions = permission.granted ? permission : await Notifications.requestPermissionsAsync();
+        if (permissions.granted) {
+          snoozeNotificationRef.current = await Notifications.scheduleNotificationAsync({
+            content: {
+              title: 'Time to get up',
+              body: alarm.phrase,
+              sound: 'default',
+              data: { alarmId: alarm.id },
+            },
+            trigger: {
+              type: Notifications.SchedulableTriggerInputTypes.DATE,
+              date: new Date(wakeAt),
+              ...(Platform.OS === 'android' ? { channelId: 'wakeword-alarms' } : {}),
+            },
+          });
+        }
       }
     } catch {
       // The foreground timer below still handles snooze if notification access is unavailable.
@@ -554,7 +584,6 @@ export default function WakeWordHome() {
     }, wakeAt - Date.now());
   };
 
-  const selectedVoice = VOICES.find((voice) => voice.id === voiceMode) ?? VOICES[1];
   const activeAlarms = alarms.filter((alarm) => alarm.enabled);
   const greeting = now.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
   const headerTop = Platform.OS === 'web' ? Math.max(insets.top, 67) : 0;
@@ -602,8 +631,8 @@ export default function WakeWordHome() {
             </View>
 
             <View style={styles.intro}>
-              <Text style={[styles.eyebrow, { color: colors.primary }]}>A BETTER WAY TO BEGIN</Text>
-              <Text style={[styles.heading, { color: colors.foreground }]}>Say it, then{'\n'}make it happen.</Text>
+              <Text style={[styles.eyebrow, { color: colors.primary }]}>YOUR ALARMS</Text>
+              <Text style={[styles.heading, { color: colors.foreground }]}>Start your day{ '\n' }your way.</Text>
               <Text style={[styles.dateLine, { color: colors.mutedForeground }]}>{greeting}</Text>
             </View>
 
@@ -611,10 +640,10 @@ export default function WakeWordHome() {
               <View style={styles.timeCardTop}>
                 <View>
                   <Text style={[styles.sectionEyebrow, { color: colors.clockMuted }]}>SET YOUR ALARM</Text>
-                  <Text style={[styles.timeHint, { color: colors.clockMuted }]}>Tomorrow starts here</Text>
+                  <Text style={[styles.timeHint, { color: colors.clockMuted }]}>Choose your time</Text>
                 </View>
                 <View style={[styles.timeIcon, { backgroundColor: colors.clockIconBg }]}>
-                  <Feather name="sunrise" size={18} color={colors.primary} />
+                  <Feather name="sunrise" size={18} color={colors.clockText} />
                 </View>
               </View>
 
@@ -665,11 +694,19 @@ export default function WakeWordHome() {
                   onPress={() => setIsPM((value) => !value)}
                   style={[styles.periodButton, { backgroundColor: colors.clockIconBg }]}
                 >
-                  <Text style={[styles.periodText, { color: colors.primary }]}>{isPM ? 'PM' : 'AM'}</Text>
-                  <Feather name="chevron-down" size={13} color={colors.primary} />
+                  <Text style={[styles.periodText, { color: colors.clockText }]}>{isPM ? 'PM' : 'AM'}</Text>
+                  <Feather name="chevron-down" size={13} color={colors.clockText} />
                 </Pressable>
               </View>
-              <Text style={[styles.pickerHint, { color: colors.clockMuted }]}>Tap the arrows to adjust</Text>
+              <Text style={[styles.pickerHint, { color: colors.clockMuted }]}>Use arrows for one minute or jump by five.</Text>
+              <View style={styles.timeShortcuts}>
+                <Pressable accessibilityRole="button" accessibilityLabel="Move alarm five minutes earlier" onPress={() => shiftTime(-5)} style={[styles.timeShortcut, { backgroundColor: colors.clockIconBg }]}>
+                  <Text style={[styles.timeShortcutText, { color: colors.clockText }]}>− 5 min</Text>
+                </Pressable>
+                <Pressable accessibilityRole="button" accessibilityLabel="Move alarm five minutes later" onPress={() => shiftTime(5)} style={[styles.timeShortcut, { backgroundColor: colors.clockIconBg }]}>
+                  <Text style={[styles.timeShortcutText, { color: colors.clockText }]}>+ 5 min</Text>
+                </Pressable>
+              </View>
             </View>
 
             <View style={styles.formSection}>
@@ -699,70 +736,27 @@ export default function WakeWordHome() {
                 ]}
               />
               <Text style={[styles.fieldHelp, { color: colors.mutedForeground }]}>
-                Make it personal, specific, and hard to ignore.
+                This is what your alarm will say.
               </Text>
             </View>
 
             <View style={styles.formSection}>
-              <View style={styles.fieldHeading}>
-                <View style={[styles.smallIcon, { backgroundColor: colors.accent }]}>
-                  <Feather name="mic" size={15} color={colors.primary} />
-                </View>
-                <Text style={[styles.fieldLabel, { color: colors.foreground }]}>Voice mode</Text>
-                <Pressable
-                  accessibilityLabel="Preview chosen voice"
-                  testID="preview-voice"
-                  onPress={() =>
-                    Speech.speak(phrase.trim() || 'Good morning. It is time to wake up.', {
-                      language: 'en-US',
-                      rate: selectedVoice.rate,
-                      pitch: selectedVoice.pitch,
-                      volume: 1,
-                    })
-                  }
-                  style={styles.previewButton}
-                >
-                  <Feather name="play" size={13} color={colors.primary} />
-                  <Text style={[styles.previewText, { color: colors.primary }]}>Preview</Text>
-                </Pressable>
-              </View>
-              <View style={styles.voiceOptions}>
-                {VOICES.map((voice) => {
-                  const selected = voiceMode === voice.id;
-                  return (
-                    <Pressable
-                      key={voice.id}
-                      accessibilityRole="radio"
-                      accessibilityState={{ selected }}
-                      testID={`voice-${voice.id}`}
-                      onPress={() => {
-                        setVoiceMode(voice.id);
-                        void Haptics.selectionAsync().catch(() => undefined);
-                      }}
-                      style={[
-                        styles.voiceOption,
-                        {
-                          backgroundColor: selected ? colors.accent : colors.card,
-                          borderColor: selected ? colors.primary : colors.border,
-                        },
-                      ]}
-                    >
-                      <Feather
-                        name={voice.icon}
-                        size={17}
-                        color={selected ? colors.primary : colors.mutedForeground}
-                      />
-                      <Text style={[styles.voiceName, { color: colors.foreground }]}>{voice.label}</Text>
-                      <Text style={[styles.voiceDetail, { color: colors.mutedForeground }]}>{voice.detail}</Text>
-                      {selected ? (
-                        <View style={[styles.voiceCheck, { backgroundColor: colors.primary }]}>
-                          <Feather name="check" size={10} color={colors.primaryForeground} />
-                        </View>
-                      ) : null}
-                    </Pressable>
-                  );
-                })}
-              </View>
+              <VoiceModePicker value={voiceMode} onChange={setVoiceMode} voiceId={voiceId} onVoiceChange={setVoiceId} phrase={phrase} colors={colors} />
+            </View>
+
+            <View style={styles.formSection}>
+              <Pressable accessibilityRole="button" accessibilityState={{ expanded: recordingExpanded }} testID="recording-selector"
+                onPress={() => setRecordingExpanded(!recordingExpanded)}
+                style={[styles.optionWidget, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <View style={[styles.widgetIcon, { backgroundColor: colors.accent }]}><Feather name="mic" size={18} color={colors.primary} /></View>
+                <View style={{ flex: 1 }}><Text style={[styles.widgetTitle, { color: colors.foreground }]}>Record your own voice</Text>
+                  <Text style={[styles.widgetDetail, { color: colors.mutedForeground }]}>{recordingUri ? 'Recording selected · overrides voice above' : 'Optional · use your own recording'}</Text></View>
+                <Feather name={recordingExpanded ? 'chevron-up' : 'chevron-down'} size={19} color={colors.mutedForeground} />
+              </Pressable>
+              {recordingExpanded ? <View style={[styles.recordingPanel, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <MyVoiceRecorder value={recordingUri} onChange={setRecordingUri} colors={colors} />
+                <Text style={[styles.fieldHelp, { color: colors.mutedForeground, marginTop: 8 }]}>Your recording replaces the selected voice for this alarm.</Text>
+              </View> : null}
             </View>
 
             <View style={styles.formSection}>
@@ -870,11 +864,13 @@ export default function WakeWordHome() {
                 onPress={() => {
                   setEditingId(null);
                   setPhrase('');
+                  setRecordingUri(undefined);
                   setDays([0, 1, 2, 3, 4]);
                   setHour12(7);
                   setMinute(0);
                   setIsPM(false);
                   setVoiceMode('focused');
+                  setVoiceId(undefined);
                 }}
                 style={styles.cancelEdit}
               >
@@ -882,7 +878,7 @@ export default function WakeWordHome() {
               </Pressable>
             ) : null}
             <Text style={[styles.deliveryNote, { color: colors.mutedForeground }]}>
-              Spoken alarms need WakeWord open. Notifications can remind you when it’s closed.
+              Android can speak when your alarm goes off, even if the app is in the background. Allow alarm and notification access when prompted.
             </Text>
 
             <View style={styles.alarmsHeading}>
@@ -948,7 +944,7 @@ export default function WakeWordHome() {
                           <Text style={[styles.alarmRepeat, { color: colors.mutedForeground }]}>{formatDays(alarm.days)}</Text>
                           <View style={styles.metaDot} />
                           <Text style={[styles.alarmRepeat, { color: colors.mutedForeground }]}>
-                            {VOICES.find((voice) => voice.id === alarm.voiceMode)?.label ?? 'Focused'} voice
+                            {getVoiceMode(alarm.voiceMode).label} voice
                           </Text>
                         </View>
                       </Pressable>
@@ -976,7 +972,7 @@ export default function WakeWordHome() {
             )}
             <View style={styles.footer}>
               <Feather name="shield" size={13} color={colors.mutedForeground} />
-              <Text style={[styles.footerText, { color: colors.mutedForeground }]}>Your phrases stay on this device.</Text>
+              <Text style={[styles.footerText, { color: colors.mutedForeground }]}>Online voices may send phrases to your speech provider.</Text>
             </View>
           </ScrollView>
         )}
@@ -1006,7 +1002,7 @@ export default function WakeWordHome() {
               <View style={styles.speakingLine}>
                 <View style={[styles.liveDot, { backgroundColor: colors.primary }]} />
                 <Text style={[styles.speakingText, { color: colors.ringMuted }]}>
-                  {VOICES.find((voice) => voice.id === ringingAlarm.voiceMode)?.label ?? 'Focused'} voice · repeating
+                  {ringingAlarm.recordingUri ? 'My Voice · looping' : `${getVoiceMode(ringingAlarm.voiceMode).label} voice · repeating`}
                 </Text>
               </View>
             </View>
@@ -1078,7 +1074,15 @@ const styles = StyleSheet.create({
   periodButton: { alignItems: 'center', flexDirection: 'row', gap: 2, paddingHorizontal: 9, height: 32, borderRadius: 10, marginLeft: 10, marginTop: 7 },
   periodText: { fontFamily: 'Inter_700Bold', fontSize: 11 },
   pickerHint: { fontFamily: 'Inter_400Regular', fontSize: 10, textAlign: 'center', marginTop: 5 },
+  timeShortcuts: { flexDirection: 'row', justifyContent: 'center', gap: 10, marginTop: 12 },
+  timeShortcut: { minWidth: 82, minHeight: 38, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  timeShortcutText: { fontFamily: 'Inter_600SemiBold', fontSize: 12 },
   formSection: { marginBottom: 22 },
+  optionWidget: { flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 1, borderRadius: 16, padding: 13, minHeight: 68 },
+  widgetIcon: { width: 40, height: 40, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
+  widgetTitle: { fontSize: 14, fontWeight: '700' },
+  widgetDetail: { fontSize: 12, marginTop: 3 },
+  recordingPanel: { borderWidth: 1, borderRadius: 16, padding: 14, marginTop: 8 },
   fieldHeading: { flexDirection: 'row', alignItems: 'center', marginBottom: 11 },
   smallIcon: { width: 28, height: 28, borderRadius: 9, alignItems: 'center', justifyContent: 'center', marginRight: 9 },
   fieldLabel: { fontFamily: 'Inter_600SemiBold', fontSize: 14, letterSpacing: -0.2 },
@@ -1153,3 +1157,4 @@ const styles = StyleSheet.create({
   stopText: { fontFamily: 'Inter_700Bold', fontSize: 15 },
   ringFootnote: { fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 4, marginBottom: 6 },
 });
+

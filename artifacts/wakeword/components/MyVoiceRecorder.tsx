@@ -11,7 +11,7 @@ type Props = {
 };
 
 export function MyVoiceRecorder({ value, onChange, colors }: Props) {
-  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  const recorder = useAudioRecorder({ ...RecordingPresets.HIGH_QUALITY, directory: 'document' });
   const recorderState = useAudioRecorderState(recorder);
   const player = useAudioPlayer(value ?? null);
   const [permissionReady, setPermissionReady] = useState(false);
