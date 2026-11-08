@@ -36,6 +36,7 @@ type WakeAlarm = {
   phrase: string;
   voiceMode: VoiceModeId;
   recordingUri?: string;
+  voiceId?: string;
   days: number[];
   enabled: boolean;
   notificationIds: string[];
@@ -141,6 +142,7 @@ export default function WakeWordHome() {
   const [isPM, setIsPM] = useState(false);
   const [phrase, setPhrase] = useState('');
   const [voiceMode, setVoiceMode] = useState<VoiceModeId>(DEFAULT_VOICE);
+  const [voiceId, setVoiceId] = useState<string | undefined>();
   const [recordingUri, setRecordingUri] = useState<string | undefined>();
   const [days, setDays] = useState<number[]>([0, 1, 2, 3, 4]);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -326,7 +328,7 @@ export default function WakeWordHome() {
             speechTimeoutRef.current = setTimeout(speakAgain, selectedVoice.repeatDelayMs);
           }
         },
-      });
+      }, ringingAlarm.voiceId);
     };
     speechLoopRef.current = speakAgain;
     speakAgain();
@@ -392,6 +394,7 @@ export default function WakeWordHome() {
         minute,
         phrase: cleanPhrase,
         voiceMode,
+        voiceId,
         recordingUri,
         days: [...days].sort(),
         enabled: true,
@@ -444,6 +447,7 @@ export default function WakeWordHome() {
     setIsPM(alarm.hour >= 12);
     setPhrase(alarm.phrase);
     setVoiceMode(alarm.voiceMode);
+    setVoiceId(alarm.voiceId);
     setRecordingUri(alarm.recordingUri);
     setDays([...alarm.days]);
     void Haptics.selectionAsync().catch(() => undefined);
@@ -713,18 +717,18 @@ export default function WakeWordHome() {
                 ]}
               />
               <Text style={[styles.fieldHelp, { color: colors.mutedForeground }]}>
-                Make it personal, specific, and hard to ignore.
+                This is what your alarm will say.
               </Text>
             </View>
 
             <View style={styles.formSection}>
-              <VoiceModePicker value={voiceMode} onChange={setVoiceMode} phrase={phrase} colors={colors} />
+              <VoiceModePicker value={voiceMode} onChange={setVoiceMode} voiceId={voiceId} onVoiceChange={setVoiceId} phrase={phrase} colors={colors} />
             </View>
 
             <View style={styles.formSection}>
               <MyVoiceRecorder value={recordingUri} onChange={setRecordingUri} colors={colors} />
               <Text style={[styles.fieldHelp, { color: colors.mutedForeground, marginTop: 8 }]}>
-                Your recording loops while WakeWord is open. Native alarms need a custom iOS or Android build; iOS 26.1+ uses its system alarm sound and shows your phrase, while Android can open WakeWord’s spoken loop when alarm and full-screen access are allowed.
+                If you record your voice, it takes the place of the accent and voice settings for this alarm.
               </Text>
             </View>
 
@@ -839,6 +843,7 @@ export default function WakeWordHome() {
                   setMinute(0);
                   setIsPM(false);
                   setVoiceMode('focused');
+                  setVoiceId(undefined);
                 }}
                 style={styles.cancelEdit}
               >
@@ -846,7 +851,7 @@ export default function WakeWordHome() {
               </Pressable>
             ) : null}
             <Text style={[styles.deliveryNote, { color: colors.mutedForeground }]}>
-              With a native build, Android can launch the spoken loop at alarm time when exact-alarm and full-screen access are allowed. iOS 26.1+ shows an AlarmKit lock-screen alarm with your phrase and a system sound; iOS 26.0 and older versions use a system reminder. The custom voice starts when WakeWord is open.
+              Android can speak when your alarm goes off, even if the app is in the background. Allow alarm and notification access when prompted.
             </Text>
 
             <View style={styles.alarmsHeading}>

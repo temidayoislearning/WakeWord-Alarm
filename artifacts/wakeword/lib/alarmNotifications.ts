@@ -12,6 +12,7 @@ export type SchedulableWakeAlarm = {
   days: number[];
   voiceMode?: string;
   recordingUri?: string;
+  voiceId?: string;
 };
 
 export type AlarmScheduleResult = {

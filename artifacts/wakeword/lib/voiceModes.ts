@@ -118,12 +118,14 @@ export async function speakWithVoiceMode(
   text: string,
   modeId: VoiceModeId,
   callbacks: Pick<Speech.SpeechOptions, 'onDone' | 'onError' | 'onStopped'> = {},
+  voiceId?: string,
+  language?: string,
 ) {
   const mode = getVoiceMode(modeId);
-  const voice = await resolveDeviceVoice(mode);
+  const voice = voiceId || await resolveDeviceVoice(mode);
 
   Speech.speak(text, {
-    language: 'en-US',
+    language: language || 'en-US',
     rate: mode.rate,
     pitch: mode.pitch,
     volume: mode.volume,

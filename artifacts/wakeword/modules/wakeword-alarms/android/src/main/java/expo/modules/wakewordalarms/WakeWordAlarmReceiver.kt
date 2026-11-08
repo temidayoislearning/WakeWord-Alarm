@@ -36,7 +36,7 @@ class WakeWordAlarmReceiver : BroadcastReceiver() {
       org.json.JSONObject(context.getSharedPreferences("wakeword-audio-settings", Context.MODE_PRIVATE).getString(id, "{}") ?: "{}")
     }.getOrNull()
     try {
-      startWakeWordAudio(context, id, phrase, settings?.optString("voiceMode", "focused"), settings?.optString("recordingUri", ""))
+      startWakeWordAudio(context, id, phrase, settings?.optString("voiceMode", "focused"), settings?.optString("recordingUri", ""), settings?.optString("voiceId", ""))
     } catch (_: Exception) {
       // Keep the alarm notification as a fallback if Android refuses the service.
       postAlarmNotification(context, id, phrase)

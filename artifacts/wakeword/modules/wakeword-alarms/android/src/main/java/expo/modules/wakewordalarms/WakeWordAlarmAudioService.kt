@@ -42,6 +42,7 @@ class WakeWordAlarmAudioService : Service() {
     phrase = intent.getStringExtra("phrase") ?: "Wake up"
     val mode = intent.getStringExtra("voiceMode") ?: "focused"
     val uri = intent.getStringExtra("recordingUri")
+    val voiceId = intent.getStringExtra("voiceId")
     val channelId = "wakeword-voice-alarm"
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
       val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -65,7 +66,7 @@ class WakeWordAlarmAudioService : Service() {
     startForeground(id.hashCode().let { if (it == 0) 1 else it }, notification)
 
     if (!uri.isNullOrBlank() && playRecording(uri)) return START_NOT_STICKY
-    startSpeech(mode)
+    startSpeech(mode, voiceId)
     return START_NOT_STICKY
   }
 
@@ -86,7 +87,7 @@ class WakeWordAlarmAudioService : Service() {
     }
   }
 
-  private fun startSpeech(mode: String) {
+  private fun startSpeech(mode: String, voiceId: String?) {
     val (rate, pitch, delay) = when (mode) {
       "gentle" -> Triple(0.78f, 1.04f, 1500L)
       "energized" -> Triple(1.10f, 1.08f, 650L)
@@ -105,6 +106,11 @@ class WakeWordAlarmAudioService : Service() {
       if (status != TextToSpeech.SUCCESS) { playFallback(); return@TextToSpeech }
       tts?.apply {
         language = Locale.US
+        // Use only local voices so a wake-up alarm does not depend on connectivity.
+        if (!voiceId.isNullOrBlank()) {
+          val selected = voices?.firstOrNull { it.name == voiceId && !it.isNetworkConnectionRequired && it.features?.contains("notInstalled") != true }
+          if (selected != null) voice = selected
+        }
         setSpeechRate(rate)
         setPitch(pitch)
         setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
@@ -153,12 +159,13 @@ class WakeWordAlarmAudioService : Service() {
   }
 }
 
-internal fun startWakeWordAudio(context: Context, id: String, phrase: String, voiceMode: String?, recordingUri: String?) {
+internal fun startWakeWordAudio(context: Context, id: String, phrase: String, voiceMode: String?, recordingUri: String?, voiceId: String?) {
   val intent = Intent(context, WakeWordAlarmAudioService::class.java).apply {
     putExtra("alarmId", id)
     putExtra("phrase", phrase)
     putExtra("voiceMode", voiceMode)
     putExtra("recordingUri", recordingUri)
+    putExtra("voiceId", voiceId)
   }
   if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) context.startForegroundService(intent) else context.startService(intent)
 }

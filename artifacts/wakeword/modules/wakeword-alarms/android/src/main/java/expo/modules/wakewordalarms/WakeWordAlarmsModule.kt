@@ -8,6 +8,8 @@ import android.net.Uri
 import android.os.Build
 import android.provider.Settings
 import androidx.core.app.NotificationManagerCompat
+import expo.modules.kotlin.Promise
+import android.speech.tts.TextToSpeech
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import java.util.Calendar
@@ -28,8 +30,9 @@ class WakeWordAlarmsModule : Module() {
       cancelStored(context, id)
       val voiceMode = input["voiceMode"] as? String ?: "focused"
       val recordingUri = input["recordingUri"] as? String
+      val voiceId = input["voiceId"] as? String ?: ""
       context.getSharedPreferences("wakeword-audio-settings", Context.MODE_PRIVATE).edit()
-        .putString(id, org.json.JSONObject().put("voiceMode", voiceMode).put("recordingUri", recordingUri ?: "").toString()).apply()
+        .putString(id, org.json.JSONObject().put("voiceMode", voiceMode).put("recordingUri", recordingUri ?: "").put("voiceId", voiceId).toString()).apply()
       persist(context, id, hour, minute, phrase, normalizedDays)
       val allowed = Build.VERSION.SDK_INT < Build.VERSION_CODES.S || manager.canScheduleExactAlarms()
       if (!allowed) {
@@ -81,13 +84,45 @@ class WakeWordAlarmsModule : Module() {
       )
     }
 
+    AsyncFunction("getOfflineVoices") { promise: Promise ->
+      val context = appContext.reactContext
+      if (context == null) {
+        promise.resolve(emptyList<Map<String, String>>())
+      } else {
+        val handler = android.os.Handler(android.os.Looper.getMainLooper())
+        val done = java.util.concurrent.atomic.AtomicBoolean(false)
+        var engine: TextToSpeech? = null
+        handler.postDelayed({
+          if (done.compareAndSet(false, true)) {
+            promise.resolve(emptyList<Map<String, String>>())
+            engine?.shutdown()
+          }
+        }, 8000)
+        engine = TextToSpeech(context) { status ->
+          handler.post {
+            if (done.compareAndSet(false, true)) {
+              val choices = if (status == TextToSpeech.SUCCESS) {
+                engine?.voices?.filter {
+                  !it.isNetworkConnectionRequired && it.locale.language == "en" && it.features?.contains("notInstalled") != true
+                }?.map { mapOf("id" to it.name, "language" to it.locale.toLanguageTag()) }
+                  ?.sortedWith(compareBy({ it["language"] }, { it["id"] })) ?: emptyList()
+              } else emptyList()
+              promise.resolve(choices)
+              engine?.shutdown()
+            }
+          }
+        }
+      }
+    }
+
     AsyncFunction("syncAlarmAudioSettings") { input: Map<String, Any?> ->
       val context = appContext.reactContext ?: return@AsyncFunction
       val id = input["id"] as? String ?: return@AsyncFunction
       val mode = input["voiceMode"] as? String ?: "focused"
       val uri = input["recordingUri"] as? String ?: ""
+      val voiceId = input["voiceId"] as? String ?: ""
       context.getSharedPreferences("wakeword-audio-settings", Context.MODE_PRIVATE).edit()
-        .putString(id, org.json.JSONObject().put("voiceMode", mode).put("recordingUri", uri).toString()).apply()
+        .putString(id, org.json.JSONObject().put("voiceMode", mode).put("recordingUri", uri).put("voiceId", voiceId).toString()).apply()
     }
 
     AsyncFunction("startAlarmAudio") { input: Map<String, Any?> ->
@@ -95,7 +130,7 @@ class WakeWordAlarmsModule : Module() {
       val id = input["id"] as? String ?: return@AsyncFunction false
       val phrase = input["phrase"] as? String ?: "Wake up"
       try {
-        startWakeWordAudio(context, id, phrase, input["voiceMode"] as? String, input["recordingUri"] as? String)
+        startWakeWordAudio(context, id, phrase, input["voiceMode"] as? String, input["recordingUri"] as? String, input["voiceId"] as? String)
         true
       } catch (_: Exception) { false }
     }
