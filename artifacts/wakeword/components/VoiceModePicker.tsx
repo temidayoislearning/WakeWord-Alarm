@@ -37,6 +37,7 @@ export function VoiceModePicker({ value, onChange, voiceId, onVoiceChange, phras
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState(false);
   const [activeAccent, setActiveAccent] = useState<string | null>(null);
+  const [showAll, setShowAll] = useState(false);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -111,13 +112,13 @@ export function VoiceModePicker({ value, onChange, voiceId, onVoiceChange, phras
             <>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.accentChips}>
                 {accents.map((accent) => (
-                  <Pressable key={accent} accessibilityRole="button" onPress={() => setActiveAccent(accent)}
+                  <Pressable key={accent} accessibilityRole="button" onPress={() => { setActiveAccent(accent); setShowAll(false); }}
                     style={[styles.chip, { backgroundColor: shownAccent === accent ? colors.accent : colors.secondary, borderColor: shownAccent === accent ? colors.primary : colors.border }]}>
                     <Text style={[styles.chipText, { color: colors.foreground }]}>{accentName(accent)}</Text>
                   </Pressable>
                 ))}
               </ScrollView>
-              {shownVoices.map((voice, index) => (
+              {shownVoices.slice(0, showAll ? undefined : 6).map((voice, index) => (
                 <Pressable key={voice.id} accessibilityRole="radio" accessibilityState={{ selected: voiceId === voice.id }}
                   onPress={() => { onVoiceChange(voice.id); void Haptics.selectionAsync().catch(() => undefined); }}
                   style={[styles.voiceRow, { borderColor: colors.border }]}>
@@ -125,6 +126,11 @@ export function VoiceModePicker({ value, onChange, voiceId, onVoiceChange, phras
                   {voiceId === voice.id ? <Feather name="check-circle" size={18} color={colors.primary} /> : <Feather name="circle" size={18} color={colors.mutedForeground} />}
                 </Pressable>
               ))}
+              {shownVoices.length > 6 ? (
+                <Pressable accessibilityRole="button" onPress={() => setShowAll(!showAll)} style={{ paddingVertical: 10 }}>
+                  <Text style={[styles.actionText, { color: colors.primary }]}>{showAll ? 'Show fewer voices' : `Show all ${shownVoices.length} voices`}</Text>
+                </Pressable>
+              ) : null}
             </>
           ) : !loading ? <Text style={[styles.panelHelp, { color: colors.mutedForeground }]}>No offline English voices were found. Add voice data in your phone’s text-to-speech settings, then refresh.</Text> : null}
           <View style={styles.panelActions}>
