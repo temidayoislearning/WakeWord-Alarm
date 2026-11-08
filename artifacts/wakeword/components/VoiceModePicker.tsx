@@ -62,6 +62,7 @@ export function VoiceModePicker({ value, onChange, voiceId, onVoiceChange, phras
   const selected = voices.find((voice) => voice.id === voiceId);
   const shownAccent = activeAccent && accents.includes(activeAccent) ? activeAccent : (selected && accents.includes(selected.language) ? selected.language : accents[0]);
   const shownVoices = filteredVoices.filter((voice) => voice.language === shownAccent);
+  const selectedIndex = selected ? voices.filter((voice) => voice.language === selected.language).findIndex((voice) => voice.id === selected.id) + 1 : 0;
 
   const preview = async () => {
     await Speech.stop();
@@ -92,7 +93,7 @@ export function VoiceModePicker({ value, onChange, voiceId, onVoiceChange, phras
         <View style={styles.accentCopy}>
           <Text style={[styles.accentLabel, { color: colors.foreground }]}>Accent & voice</Text>
           <Text style={[styles.accentDetail, { color: colors.mutedForeground }]}>
-            {loading ? 'Finding your voices…' : selected ? `${accentName(selected.language)} · ${selected.requiresNetwork ? 'Online' : selected.requiresNetwork === false ? 'Offline' : 'Device voice'}` : voiceId ? 'Saved voice unavailable · using default' : 'US English default'}
+            {loading ? 'Finding your voices…' : selected ? `${accentName(selected.language)} · Voice ${selectedIndex} · ${selected.requiresNetwork ? 'Online' : selected.requiresNetwork === false ? 'Offline' : 'Device voice'}` : voiceId ? 'Saved voice unavailable · using default' : 'US English default'}
           </Text>
         </View>
         <Feather name={expanded ? 'chevron-up' : 'chevron-down'} size={19} color={colors.mutedForeground} />
