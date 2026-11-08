@@ -78,7 +78,7 @@ jobs:
             sleep 2
             adb shell uiautomator dump /sdcard/voice.xml
             adb shell cat /sdcard/voice.xml > voice-before.xml
-            python3 -c 'import xml.etree.ElementTree as E,re,subprocess; n=next(x for x in E.parse("voice-before.xml").iter() if x.get("text")=="Accent & voice"); a=list(map(int,re.findall(r"\\d+",n.get("bounds")))); subprocess.run(["adb","shell","input","tap",str((a[0]+a[2])//2),str((a[1]+a[3])//2)],check=True)'
+            python3 -c 'import xml.etree.ElementTree as E,re,subprocess; n=next(x for x in E.parse("voice-before.xml").iter() if x.get("text")=="Accent & voice"); a=list(map(int,re.findall("[0-9]+",n.get("bounds")))); subprocess.run(["adb","shell","input","tap",str((a[0]+a[2])//2),str((a[1]+a[3])//2)],check=True)'
             sleep 3
             adb shell uiautomator dump /sdcard/voice-open.xml
             adb shell cat /sdcard/voice-open.xml > voice-open.xml
