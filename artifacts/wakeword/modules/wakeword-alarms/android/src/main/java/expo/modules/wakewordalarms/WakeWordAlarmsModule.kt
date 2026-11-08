@@ -104,8 +104,8 @@ class WakeWordAlarmsModule : Module() {
               val choices = if (status == TextToSpeech.SUCCESS) {
                 engine?.voices?.filter {
                   it.locale.language == "en" && (it.isNetworkConnectionRequired || it.features?.contains("notInstalled") != true)
-                }?.sortedWith(compareBy({ it.locale.toLanguageTag() }, { it.name }))
-                  ?.map { mapOf("id" to it.name, "language" to it.locale.toLanguageTag(), "requiresNetwork" to it.isNetworkConnectionRequired) } ?: emptyList()
+                }?.sortedWith(compareBy({ it.locale.toLanguageTag() }, { -it.quality }, { it.name }))
+                  ?.map { mapOf("id" to it.name, "language" to it.locale.toLanguageTag(), "requiresNetwork" to it.isNetworkConnectionRequired, "quality" to it.quality) } ?: emptyList()
               } else emptyList()
               promise.resolve(choices)
               engine?.shutdown()
@@ -297,3 +297,4 @@ internal fun ringIntentFor(context: Context, id: String): Intent {
     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
   }
 }
+

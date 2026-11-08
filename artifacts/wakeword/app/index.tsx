@@ -144,6 +144,7 @@ export default function WakeWordHome() {
   const [voiceMode, setVoiceMode] = useState<VoiceModeId>(DEFAULT_VOICE);
   const [voiceId, setVoiceId] = useState<string | undefined>();
   const [recordingUri, setRecordingUri] = useState<string | undefined>();
+  const [recordingExpanded, setRecordingExpanded] = useState(false);
   const [days, setDays] = useState<number[]>([0, 1, 2, 3, 4]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [ringingAlarm, setRingingAlarm] = useState<WakeAlarm | null>(null);
@@ -458,6 +459,7 @@ export default function WakeWordHome() {
     setVoiceMode(alarm.voiceMode);
     setVoiceId(alarm.voiceId);
     setRecordingUri(alarm.recordingUri);
+    setRecordingExpanded(Boolean(alarm.recordingUri));
     setDays([...alarm.days]);
     void Haptics.selectionAsync().catch(() => undefined);
   };
@@ -641,7 +643,7 @@ export default function WakeWordHome() {
                   <Text style={[styles.timeHint, { color: colors.clockMuted }]}>Choose your time</Text>
                 </View>
                 <View style={[styles.timeIcon, { backgroundColor: colors.clockIconBg }]}>
-                  <Feather name="sunrise" size={18} color={colors.primary} />
+                  <Feather name="sunrise" size={18} color={colors.clockText} />
                 </View>
               </View>
 
@@ -692,8 +694,8 @@ export default function WakeWordHome() {
                   onPress={() => setIsPM((value) => !value)}
                   style={[styles.periodButton, { backgroundColor: colors.clockIconBg }]}
                 >
-                  <Text style={[styles.periodText, { color: colors.primary }]}>{isPM ? 'PM' : 'AM'}</Text>
-                  <Feather name="chevron-down" size={13} color={colors.primary} />
+                  <Text style={[styles.periodText, { color: colors.clockText }]}>{isPM ? 'PM' : 'AM'}</Text>
+                  <Feather name="chevron-down" size={13} color={colors.clockText} />
                 </Pressable>
               </View>
               <Text style={[styles.pickerHint, { color: colors.clockMuted }]}>Use arrows for one minute or jump by five.</Text>
@@ -743,10 +745,18 @@ export default function WakeWordHome() {
             </View>
 
             <View style={styles.formSection}>
-              <MyVoiceRecorder value={recordingUri} onChange={setRecordingUri} colors={colors} />
-              <Text style={[styles.fieldHelp, { color: colors.mutedForeground, marginTop: 8 }]}>
-                If you record your voice, it takes the place of the accent and voice settings for this alarm.
-              </Text>
+              <Pressable accessibilityRole="button" accessibilityState={{ expanded: recordingExpanded }} testID="recording-selector"
+                onPress={() => setRecordingExpanded(!recordingExpanded)}
+                style={[styles.optionWidget, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <View style={[styles.widgetIcon, { backgroundColor: colors.accent }]}><Feather name="mic" size={18} color={colors.primary} /></View>
+                <View style={{ flex: 1 }}><Text style={[styles.widgetTitle, { color: colors.foreground }]}>Record your own voice</Text>
+                  <Text style={[styles.widgetDetail, { color: colors.mutedForeground }]}>{recordingUri ? 'Recording selected · overrides voice above' : 'Optional · use your own recording'}</Text></View>
+                <Feather name={recordingExpanded ? 'chevron-up' : 'chevron-down'} size={19} color={colors.mutedForeground} />
+              </Pressable>
+              {recordingExpanded ? <View style={[styles.recordingPanel, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <MyVoiceRecorder value={recordingUri} onChange={setRecordingUri} colors={colors} />
+                <Text style={[styles.fieldHelp, { color: colors.mutedForeground, marginTop: 8 }]}>Your recording replaces the selected voice for this alarm.</Text>
+              </View> : null}
             </View>
 
             <View style={styles.formSection}>
@@ -1068,6 +1078,11 @@ const styles = StyleSheet.create({
   timeShortcut: { minWidth: 82, minHeight: 38, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
   timeShortcutText: { fontFamily: 'Inter_600SemiBold', fontSize: 12 },
   formSection: { marginBottom: 22 },
+  optionWidget: { flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 1, borderRadius: 16, padding: 13, minHeight: 68 },
+  widgetIcon: { width: 40, height: 40, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
+  widgetTitle: { fontSize: 14, fontWeight: '700' },
+  widgetDetail: { fontSize: 12, marginTop: 3 },
+  recordingPanel: { borderWidth: 1, borderRadius: 16, padding: 14, marginTop: 8 },
   fieldHeading: { flexDirection: 'row', alignItems: 'center', marginBottom: 11 },
   smallIcon: { width: 28, height: 28, borderRadius: 9, alignItems: 'center', justifyContent: 'center', marginRight: 9 },
   fieldLabel: { fontFamily: 'Inter_600SemiBold', fontSize: 14, letterSpacing: -0.2 },
@@ -1142,3 +1157,4 @@ const styles = StyleSheet.create({
   stopText: { fontFamily: 'Inter_700Bold', fontSize: 15 },
   ringFootnote: { fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 4, marginBottom: 6 },
 });
+

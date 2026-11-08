@@ -14,7 +14,7 @@ type Props = {
   phrase: string;
   colors: any;
 };
-type VoiceChoice = { id: string; language: string; requiresNetwork?: boolean };
+type VoiceChoice = { id: string; language: string; requiresNetwork?: boolean; quality?: number };
 
 const ICONS: Record<VoiceModeId, keyof typeof Feather.glyphMap> = {
   gentle: 'wind', focused: 'target', energized: 'zap', urgent: 'alert-circle', deep: 'volume-1',
@@ -36,6 +36,7 @@ export function VoiceModePicker({ value, onChange, voiceId, onVoiceChange, phras
   const [voices, setVoices] = useState<VoiceChoice[]>([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState(false);
+  const [energyExpanded, setEnergyExpanded] = useState(false);
   const [activeAccent, setActiveAccent] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
   const [connectionFilter, setConnectionFilter] = useState<'all' | 'offline' | 'online'>('all');
@@ -64,13 +65,13 @@ export function VoiceModePicker({ value, onChange, voiceId, onVoiceChange, phras
   const shownVoices = filteredVoices.filter((voice) => voice.language === shownAccent);
   const selectedIndex = selected ? voices.filter((voice) => voice.language === selected.language).findIndex((voice) => voice.id === selected.id) + 1 : 0;
 
-  const preview = async () => {
-    const showError = () => Alert.alert('Voice unavailable', selected?.requiresNetwork
+  const preview = async (voice: VoiceChoice | undefined = selected) => {
+    const showError = () => Alert.alert('Voice unavailable', voice?.requiresNetwork
       ? 'Check your internet connection or try another voice.'
       : 'Try another voice or check your phone’s text-to-speech settings.');
     try {
       await Speech.stop();
-      await speakWithVoiceMode(phrase.trim() || 'Good morning. It is time to wake up.', value, { onError: showError }, selected?.id, selected?.language);
+      await speakWithVoiceMode(phrase.trim() || 'Good morning. It is time to wake up.', value, { onError: showError }, voice?.id, voice?.language);
     } catch {
       showError();
     }
@@ -110,7 +111,7 @@ export function VoiceModePicker({ value, onChange, voiceId, onVoiceChange, phras
         <View style={[styles.accentPanel, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <Text style={[styles.panelTitle, { color: colors.foreground }]}>Available accents</Text>
           <Text style={[styles.panelHelp, { color: colors.mutedForeground }]}>
-            {Platform.OS === 'android' ? 'Online voices need internet. If speech fails, your alarm uses a fallback tone.' : 'Voices available on your device.'}
+            {Platform.OS === 'android' ? 'Tap play to hear a voice, then select it. Higher quality is rated by your phone. Online voices need internet; your alarm has a fallback tone.' : 'Tap play to hear a voice, then select it.'}
           </Text>
           <Pressable accessibilityRole="radio" accessibilityState={{ selected: !voiceId }} onPress={() => onVoiceChange(undefined)}
             style={[styles.voiceRow, { borderColor: colors.border }]}>
@@ -139,15 +140,21 @@ export function VoiceModePicker({ value, onChange, voiceId, onVoiceChange, phras
                 ))}
               </ScrollView>
               {shownVoices.slice(0, showAll ? undefined : 6).map((voice) => (
-                <Pressable key={voice.id} accessibilityRole="radio" accessibilityState={{ selected: voiceId === voice.id }}
-                  onPress={() => { onVoiceChange(voice.id); void Haptics.selectionAsync().catch(() => undefined); }}
-                  style={[styles.voiceRow, { borderColor: colors.border }]}>
-                  <View style={{ flex: 1, paddingVertical: 7 }}>
+                <View key={voice.id} style={[styles.voiceRow, { borderColor: colors.border }]}>
+                  <Pressable accessibilityRole="radio" accessibilityState={{ selected: voiceId === voice.id }}
+                    accessibilityLabel={`Select ${accentName(voice.language)} voice ${voices.filter((item) => item.language === voice.language).findIndex((item) => item.id === voice.id) + 1}`}
+                    onPress={() => { onVoiceChange(voice.id); void Haptics.selectionAsync().catch(() => undefined); }}
+                    style={{ flex: 1, paddingVertical: 9 }}>
                     <Text style={[styles.voiceName, { color: colors.foreground }]}>{accentName(voice.language)} · Voice {voices.filter((item) => item.language === voice.language).findIndex((item) => item.id === voice.id) + 1}</Text>
-                    <Text style={[styles.voiceConnection, { color: colors.mutedForeground }]}>{voice.requiresNetwork === true ? 'Online · internet required' : voice.requiresNetwork === false ? 'Offline' : 'Device voice'}</Text>
-                  </View>
-                  {voiceId === voice.id ? <Feather name="check-circle" size={18} color={colors.primary} /> : <Feather name="circle" size={18} color={colors.mutedForeground} />}
-                </Pressable>
+                    <Text style={[styles.voiceConnection, { color: colors.mutedForeground }]}>{voice.requiresNetwork === true ? 'Online' : voice.requiresNetwork === false ? 'Offline' : 'Device voice'}{voice.quality && voice.quality >= 400 ? ' · Higher quality' : ''}{voiceId === voice.id ? ' · Selected' : ''}</Text>
+                  </Pressable>
+                  <Pressable accessibilityRole="button" accessibilityLabel={`Preview ${accentName(voice.language)} voice ${voices.filter((item) => item.language === voice.language).findIndex((item) => item.id === voice.id) + 1}`}
+                    onPress={() => void preview(voice)} style={[styles.voicePlay, { backgroundColor: colors.accent }]}>
+                    <Feather name="play" size={15} color={colors.primary} />
+                    <Text style={[styles.previewText, { color: colors.primary }]}>Play</Text>
+                  </Pressable>
+                  {voiceId === voice.id ? <Feather name="check-circle" size={18} color={colors.primary} /> : null}
+                </View>
               ))}
               {shownVoices.length > 6 ? (
                 <Pressable accessibilityRole="button" onPress={() => setShowAll(!showAll)} style={{ paddingVertical: 10 }}>
@@ -163,8 +170,13 @@ export function VoiceModePicker({ value, onChange, voiceId, onVoiceChange, phras
         </View>
       ) : null}
 
-      <Text style={[styles.energyLabel, { color: colors.foreground }]}>Energy</Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
+      <Pressable accessibilityRole="button" accessibilityState={{ expanded: energyExpanded }} testID="energy-selector"
+        onPress={() => setEnergyExpanded(!energyExpanded)} style={[styles.accentButton, { backgroundColor: colors.card, borderColor: colors.border, marginTop: 10 }]}>
+        <View style={[styles.icon, { backgroundColor: colors.accent }]}><Feather name="sliders" size={18} color={colors.primary} /></View>
+        <View style={styles.accentCopy}><Text style={[styles.accentLabel, { color: colors.foreground }]}>Voice energy</Text><Text style={[styles.accentDetail, { color: colors.mutedForeground }]}>{VOICE_MODES.find((mode) => mode.id === value)?.label} · change delivery</Text></View>
+        <Feather name={energyExpanded ? 'chevron-up' : 'chevron-down'} size={19} color={colors.mutedForeground} />
+      </Pressable>
+      {energyExpanded ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row} style={{ marginTop: 10 }}>
         {VOICE_MODES.map((mode) => {
           const selectedMode = value === mode.id;
           return (
@@ -180,7 +192,7 @@ export function VoiceModePicker({ value, onChange, voiceId, onVoiceChange, phras
             </Pressable>
           );
         })}
-      </ScrollView>
+      </ScrollView> : null}
     </View>
   );
 }
@@ -203,6 +215,7 @@ const styles = StyleSheet.create({
   filters: { flexDirection: 'row', gap: 7, paddingTop: 12 },
   filterChip: { borderWidth: 1, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 7 },
   voiceConnection: { fontSize: 11, marginTop: 2 },
+  voicePlay: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 12, paddingHorizontal: 11, minHeight: 42 },
   chip: { borderWidth: 1, borderRadius: 20, paddingVertical: 7, paddingHorizontal: 12 },
   chipText: { fontSize: 12, fontWeight: '600' },
   voiceRow: { minHeight: 44, borderBottomWidth: 1, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10 },
@@ -216,3 +229,4 @@ const styles = StyleSheet.create({
   name: { fontSize: 14, fontWeight: '800' },
   detail: { fontSize: 11, lineHeight: 15, marginTop: 4 },
 });
+
