@@ -277,7 +277,6 @@ export default function WakeWordHome() {
       speechLoopRef.current = () => undefined;
       Speech.stop();
       audioPlayer.pause();
-      audioPlayer.replace(null);
       if (speechTimeoutRef.current) clearTimeout(speechTimeoutRef.current);
       return;
     }
