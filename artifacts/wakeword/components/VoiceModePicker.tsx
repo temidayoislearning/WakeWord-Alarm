@@ -2,7 +2,7 @@ import { Feather } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import * as Speech from 'expo-speech';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Linking, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { VOICE_MODES, VoiceModeId, speakWithVoiceMode } from '@/lib/voiceModes';
 import { getAccentVoices } from '@/modules/wakeword-alarms/src/WakeWordAlarms';
 
@@ -65,8 +65,15 @@ export function VoiceModePicker({ value, onChange, voiceId, onVoiceChange, phras
   const selectedIndex = selected ? voices.filter((voice) => voice.language === selected.language).findIndex((voice) => voice.id === selected.id) + 1 : 0;
 
   const preview = async () => {
-    await Speech.stop();
-    await speakWithVoiceMode(phrase.trim() || 'Good morning. It is time to wake up.', value, {}, selected?.id, selected?.language);
+    const showError = () => Alert.alert('Voice unavailable', selected?.requiresNetwork
+      ? 'Check your internet connection or try another voice.'
+      : 'Try another voice or check your phone’s text-to-speech settings.');
+    try {
+      await Speech.stop();
+      await speakWithVoiceMode(phrase.trim() || 'Good morning. It is time to wake up.', value, { onError: showError }, selected?.id, selected?.language);
+    } catch {
+      showError();
+    }
   };
 
   const openVoiceSettings = async () => {
