@@ -122,7 +122,7 @@ export async function speakWithVoiceMode(
   language?: string,
 ) {
   const mode = getVoiceMode(modeId);
-  const voice = voiceId || await resolveDeviceVoice(mode);
+  const voice = voiceId;
 
   Speech.speak(text, {
     language: language || 'en-US',
