@@ -19,7 +19,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: WakeWord-Android-preview
-          run-id: 42453822166
+          run-id: 42493014565
           github-token: ${{ github.token }}
           path: preview
       - name: Enable emulator acceleration
