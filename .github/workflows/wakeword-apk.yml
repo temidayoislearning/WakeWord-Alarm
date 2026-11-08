@@ -73,7 +73,7 @@ jobs:
             cat startup-log.txt
             cat startup-view.xml
             if grep -q "Something went wrong" startup-view.xml; then exit 1; fi
-            if ! grep -q "WakeWord" startup-view.xml; then exit 1; fi
+            if ! grep -q "SET YOUR ALARM" startup-view.xml; then exit 1; fi
       - uses: actions/upload-artifact@v4
         if: always()
         with:
