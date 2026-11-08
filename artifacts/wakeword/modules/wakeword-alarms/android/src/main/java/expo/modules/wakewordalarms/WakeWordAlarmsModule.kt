@@ -84,10 +84,10 @@ class WakeWordAlarmsModule : Module() {
       )
     }
 
-    AsyncFunction("getOfflineVoices") { promise: Promise ->
+    AsyncFunction("getAccentVoices") { promise: Promise ->
       val context = appContext.reactContext
       if (context == null) {
-        promise.resolve(emptyList<Map<String, String>>())
+        promise.resolve(emptyList<Map<String, Any>>())
       } else {
         val handler = android.os.Handler(android.os.Looper.getMainLooper())
         val done = java.util.concurrent.atomic.AtomicBoolean(false)
@@ -103,9 +103,9 @@ class WakeWordAlarmsModule : Module() {
             if (done.compareAndSet(false, true)) {
               val choices = if (status == TextToSpeech.SUCCESS) {
                 engine?.voices?.filter {
-                  !it.isNetworkConnectionRequired && it.locale.language == "en" && it.features?.contains("notInstalled") != true
-                }?.map { mapOf("id" to it.name, "language" to it.locale.toLanguageTag()) }
-                  ?.sortedWith(compareBy({ it["language"] }, { it["id"] })) ?: emptyList()
+                  it.locale.language == "en" && (it.isNetworkConnectionRequired || it.features?.contains("notInstalled") != true)
+                }?.sortedWith(compareBy({ it.locale.toLanguageTag() }, { it.name }))
+                  ?.map { mapOf("id" to it.name, "language" to it.locale.toLanguageTag(), "requiresNetwork" to it.isNetworkConnectionRequired) } ?: emptyList()
               } else emptyList()
               promise.resolve(choices)
               engine?.shutdown()

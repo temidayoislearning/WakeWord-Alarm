@@ -4,7 +4,7 @@ import * as Speech from 'expo-speech';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Linking, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { VOICE_MODES, VoiceModeId, speakWithVoiceMode } from '@/lib/voiceModes';
-import { getOfflineAccentVoices } from '@/modules/wakeword-alarms/src/WakeWordAlarms';
+import { getAccentVoices } from '@/modules/wakeword-alarms/src/WakeWordAlarms';
 
 type Props = {
   value: VoiceModeId;
@@ -14,7 +14,7 @@ type Props = {
   phrase: string;
   colors: any;
 };
-type VoiceChoice = { id: string; language: string };
+type VoiceChoice = { id: string; language: string; requiresNetwork?: boolean };
 
 const ICONS: Record<VoiceModeId, keyof typeof Feather.glyphMap> = {
   gentle: 'wind', focused: 'target', energized: 'zap', urgent: 'alert-circle', deep: 'volume-1',
@@ -38,12 +38,13 @@ export function VoiceModePicker({ value, onChange, voiceId, onVoiceChange, phras
   const [expanded, setExpanded] = useState(false);
   const [activeAccent, setActiveAccent] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
+  const [connectionFilter, setConnectionFilter] = useState<'all' | 'offline' | 'online'>('all');
 
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
       const found = Platform.OS === 'android'
-        ? await getOfflineAccentVoices()
+        ? await getAccentVoices()
         : (await Speech.getAvailableVoicesAsync())
             .filter((voice) => voice.language.toLowerCase().startsWith('en'))
             .map((voice) => ({ id: voice.identifier, language: voice.language }));
@@ -56,11 +57,11 @@ export function VoiceModePicker({ value, onChange, voiceId, onVoiceChange, phras
   }, []);
   useEffect(() => { void refresh(); }, [refresh]);
 
-  const accents = useMemo(() => Array.from(new Set(voices.map((voice) => voice.language))).sort(), [voices]);
+  const filteredVoices = useMemo(() => voices.filter((voice) => connectionFilter === 'all' || (connectionFilter === 'online' ? voice.requiresNetwork === true : voice.requiresNetwork === false)), [voices, connectionFilter]);
+  const accents = useMemo(() => Array.from(new Set(filteredVoices.map((voice) => voice.language))).sort(), [filteredVoices]);
   const selected = voices.find((voice) => voice.id === voiceId);
-  const shownAccent = activeAccent && accents.includes(activeAccent) ? activeAccent : selected?.language || accents[0];
-  const shownVoices = voices.filter((voice) => voice.language === shownAccent);
-  const selectedIndex = selected ? voices.filter((voice) => voice.language === selected.language).findIndex((voice) => voice.id === selected.id) + 1 : 0;
+  const shownAccent = activeAccent && accents.includes(activeAccent) ? activeAccent : (selected && accents.includes(selected.language) ? selected.language : accents[0]);
+  const shownVoices = filteredVoices.filter((voice) => voice.language === shownAccent);
 
   const preview = async () => {
     await Speech.stop();
@@ -91,7 +92,7 @@ export function VoiceModePicker({ value, onChange, voiceId, onVoiceChange, phras
         <View style={styles.accentCopy}>
           <Text style={[styles.accentLabel, { color: colors.foreground }]}>Accent & voice</Text>
           <Text style={[styles.accentDetail, { color: colors.mutedForeground }]}>
-            {loading ? 'Finding your voices…' : selected ? `${accentName(selected.language)} · Voice ${selectedIndex}` : voiceId ? 'Saved voice unavailable · using default' : 'US English default'}
+            {loading ? 'Finding your voices…' : selected ? `${accentName(selected.language)} · ${selected.requiresNetwork ? 'Online' : selected.requiresNetwork === false ? 'Offline' : 'Device voice'}` : voiceId ? 'Saved voice unavailable · using default' : 'US English default'}
           </Text>
         </View>
         <Feather name={expanded ? 'chevron-up' : 'chevron-down'} size={19} color={colors.mutedForeground} />
@@ -101,13 +102,24 @@ export function VoiceModePicker({ value, onChange, voiceId, onVoiceChange, phras
         <View style={[styles.accentPanel, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <Text style={[styles.panelTitle, { color: colors.foreground }]}>Available accents</Text>
           <Text style={[styles.panelHelp, { color: colors.mutedForeground }]}>
-            {Platform.OS === 'android' ? 'These voices are reported as available offline on your phone.' : 'Voices available on your device.'}
+            {Platform.OS === 'android' ? 'Online voices need internet. If speech fails, your alarm uses a fallback tone.' : 'Voices available on your device.'}
           </Text>
           <Pressable accessibilityRole="radio" accessibilityState={{ selected: !voiceId }} onPress={() => onVoiceChange(undefined)}
             style={[styles.voiceRow, { borderColor: colors.border }]}>
             <Text style={[styles.voiceName, { color: colors.foreground }]}>US English default</Text>
             {!voiceId ? <Feather name="check-circle" size={18} color={colors.primary} /> : null}
           </Pressable>
+          {Platform.OS === 'android' && voices.length ? (
+            <View style={styles.filters} accessibilityLabel="Filter by connection">
+              {(['all', 'offline', 'online'] as const).map((filter) => (
+                <Pressable key={filter} accessibilityRole="button" accessibilityState={{ selected: connectionFilter === filter }}
+                  onPress={() => { setConnectionFilter(filter); setActiveAccent(null); setShowAll(false); }}
+                  style={[styles.filterChip, { backgroundColor: connectionFilter === filter ? colors.accent : colors.secondary, borderColor: connectionFilter === filter ? colors.primary : colors.border }]}>
+                  <Text style={[styles.chipText, { color: colors.foreground }]}>{filter === 'all' ? 'All' : filter === 'online' ? 'Online' : 'Offline'}</Text>
+                </Pressable>
+              ))}
+            </View>
+          ) : null}
           {accents.length ? (
             <>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.accentChips}>
@@ -118,11 +130,14 @@ export function VoiceModePicker({ value, onChange, voiceId, onVoiceChange, phras
                   </Pressable>
                 ))}
               </ScrollView>
-              {shownVoices.slice(0, showAll ? undefined : 6).map((voice, index) => (
+              {shownVoices.slice(0, showAll ? undefined : 6).map((voice) => (
                 <Pressable key={voice.id} accessibilityRole="radio" accessibilityState={{ selected: voiceId === voice.id }}
                   onPress={() => { onVoiceChange(voice.id); void Haptics.selectionAsync().catch(() => undefined); }}
                   style={[styles.voiceRow, { borderColor: colors.border }]}>
-                  <Text style={[styles.voiceName, { color: colors.foreground }]}>{accentName(voice.language)} · Voice {index + 1}</Text>
+                  <View style={{ flex: 1, paddingVertical: 7 }}>
+                    <Text style={[styles.voiceName, { color: colors.foreground }]}>{accentName(voice.language)} · Voice {voices.filter((item) => item.language === voice.language).findIndex((item) => item.id === voice.id) + 1}</Text>
+                    <Text style={[styles.voiceConnection, { color: colors.mutedForeground }]}>{voice.requiresNetwork === true ? 'Online · internet required' : voice.requiresNetwork === false ? 'Offline' : 'Device voice'}</Text>
+                  </View>
                   {voiceId === voice.id ? <Feather name="check-circle" size={18} color={colors.primary} /> : <Feather name="circle" size={18} color={colors.mutedForeground} />}
                 </Pressable>
               ))}
@@ -132,7 +147,7 @@ export function VoiceModePicker({ value, onChange, voiceId, onVoiceChange, phras
                 </Pressable>
               ) : null}
             </>
-          ) : !loading ? <Text style={[styles.panelHelp, { color: colors.mutedForeground }]}>No offline English voices were found. Add voice data in your phone’s text-to-speech settings, then refresh.</Text> : null}
+          ) : !loading ? <Text style={[styles.panelHelp, { color: colors.mutedForeground }]}>No voices found for this filter. Add voices in your phone’s text-to-speech settings, then refresh.</Text> : null}
           <View style={styles.panelActions}>
             <Pressable accessibilityRole="button" onPress={() => void openVoiceSettings()}><Text style={[styles.actionText, { color: colors.primary }]}>Voice settings</Text></Pressable>
             <Pressable accessibilityRole="button" onPress={() => void refresh()}><Text style={[styles.actionText, { color: colors.primary }]}>Refresh voices</Text></Pressable>
@@ -177,6 +192,9 @@ const styles = StyleSheet.create({
   panelTitle: { fontSize: 14, fontWeight: '700' },
   panelHelp: { fontSize: 11, lineHeight: 17, marginTop: 5, marginBottom: 7 },
   accentChips: { flexDirection: 'row', gap: 7, paddingVertical: 10 },
+  filters: { flexDirection: 'row', gap: 7, paddingTop: 12 },
+  filterChip: { borderWidth: 1, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 7 },
+  voiceConnection: { fontSize: 11, marginTop: 2 },
   chip: { borderWidth: 1, borderRadius: 20, paddingVertical: 7, paddingHorizontal: 12 },
   chipText: { fontSize: 12, fontWeight: '600' },
   voiceRow: { minHeight: 44, borderBottomWidth: 1, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10 },

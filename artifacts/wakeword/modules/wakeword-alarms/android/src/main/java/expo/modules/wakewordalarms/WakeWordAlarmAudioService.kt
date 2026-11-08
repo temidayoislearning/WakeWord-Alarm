@@ -30,6 +30,7 @@ class WakeWordAlarmAudioService : Service() {
   private var active = false
   private var phrase = ""
   private var delayMs = 900L
+  private var utteranceSequence = 0
 
   override fun onBind(intent: Intent?): IBinder? = null
 
@@ -106,9 +107,11 @@ class WakeWordAlarmAudioService : Service() {
       if (status != TextToSpeech.SUCCESS) { playFallback(); return@TextToSpeech }
       tts?.apply {
         language = Locale.US
-        // Use only local voices so a wake-up alarm does not depend on connectivity.
+        // A selected online voice may need connectivity at alarm time.
         if (!voiceId.isNullOrBlank()) {
-          val selected = voices?.firstOrNull { it.name == voiceId && !it.isNetworkConnectionRequired && it.features?.contains("notInstalled") != true }
+          val selected = voices?.firstOrNull {
+            it.name == voiceId && (it.isNetworkConnectionRequired || it.features?.contains("notInstalled") != true)
+          }
           if (selected != null) voice = selected
         }
         setSpeechRate(rate)
@@ -116,7 +119,7 @@ class WakeWordAlarmAudioService : Service() {
         setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
         setOnUtteranceProgressListener(object : UtteranceProgressListener() {
           override fun onStart(utteranceId: String?) {}
-          override fun onDone(utteranceId: String?) { handler.postDelayed({ speakAgain() }, delayMs) }
+          override fun onDone(utteranceId: String?) { handler.post { utteranceSequence++; handler.postDelayed({ speakAgain() }, delayMs) } }
           @Deprecated("Deprecated in Java")
           override fun onError(utteranceId: String?) { handler.post { playFallback() } }
         })
@@ -126,11 +129,23 @@ class WakeWordAlarmAudioService : Service() {
   }
 
   private fun speakAgain() {
-    if (active) tts?.speak(phrase, TextToSpeech.QUEUE_FLUSH, null, "wakeword-alarm")
+    if (!active || player != null) return
+    val sequence = ++utteranceSequence
+    val result = tts?.speak(phrase, TextToSpeech.QUEUE_FLUSH, null, "wakeword-alarm") ?: TextToSpeech.ERROR
+    if (result == TextToSpeech.ERROR) {
+      playFallback()
+      return
+    }
+    // Some online engines do not report an error when a request stalls.
+    handler.postDelayed({
+      if (active && player == null && utteranceSequence == sequence) playFallback()
+    }, 15000)
   }
 
   private fun playFallback() {
     if (!active || player != null) return
+    handler.removeCallbacksAndMessages(null)
+    tts?.stop()
     try {
       player = MediaPlayer().apply {
         setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ALARM).setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build())

@@ -24,7 +24,7 @@ type WakeWordAlarmsNative = {
   cancelAlarm(id: string): Promise<void>;
   startAlarmAudio?(alarm: NativeAlarmInput): Promise<boolean>;
   syncAlarmAudioSettings?(alarm: NativeAlarmInput): Promise<void>;
-  getOfflineVoices?(): Promise<Array<{ id: string; language: string }>>;
+  getAccentVoices?(): Promise<Array<{ id: string; language: string; requiresNetwork: boolean }>>;
   snoozeAlarm(id: string, phrase: string): Promise<boolean>;
   stopRinging(id: string): Promise<void>;
   requestAlarmPermission(): Promise<boolean>;
@@ -104,7 +104,7 @@ export async function syncNativeAlarmAudioSettings(alarm: NativeAlarmInput): Pro
   if (module?.syncAlarmAudioSettings) await module.syncAlarmAudioSettings(alarm);
 }
 
-export async function getOfflineAccentVoices(): Promise<Array<{ id: string; language: string }>> {
+export async function getAccentVoices(): Promise<Array<{ id: string; language: string; requiresNetwork: boolean }>> {
   const module = getNativeModule();
-  return module?.getOfflineVoices ? module.getOfflineVoices() : [];
+  return module?.getAccentVoices ? module.getAccentVoices() : [];
 }
