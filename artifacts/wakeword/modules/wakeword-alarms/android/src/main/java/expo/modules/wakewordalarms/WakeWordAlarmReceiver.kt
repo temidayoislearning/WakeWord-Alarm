@@ -32,7 +32,15 @@ class WakeWordAlarmReceiver : BroadcastReceiver() {
       }.getOrDefault(false)
       if (isOneTime) prefs.edit().remove(id).apply()
     }
-    postAlarmNotification(context, id, phrase)
+    val settings = runCatching {
+      org.json.JSONObject(context.getSharedPreferences("wakeword-audio-settings", Context.MODE_PRIVATE).getString(id, "{}") ?: "{}")
+    }.getOrNull()
+    try {
+      startWakeWordAudio(context, id, phrase, settings?.optString("voiceMode", "focused"), settings?.optString("recordingUri", ""))
+    } catch (_: Exception) {
+      // Keep the alarm notification as a fallback if Android refuses the service.
+      postAlarmNotification(context, id, phrase)
+    }
   }
 
   private fun scheduleNextWeekly(context: Context, id: String, phrase: String, hour: Int, minute: Int, day: Int) {

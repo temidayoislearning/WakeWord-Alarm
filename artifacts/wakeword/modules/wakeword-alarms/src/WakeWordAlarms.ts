@@ -6,6 +6,8 @@ export type NativeAlarmInput = {
   minute: number;
   phrase: string;
   days: number[];
+  voiceMode?: string;
+  recordingUri?: string;
 };
 
 export type NativeAlarmResult = {
@@ -19,6 +21,8 @@ export type NativeAlarmResult = {
 type WakeWordAlarmsNative = {
   scheduleAlarm(alarm: NativeAlarmInput): Promise<NativeAlarmResult>;
   cancelAlarm(id: string): Promise<void>;
+  startAlarmAudio?(alarm: NativeAlarmInput): Promise<boolean>;
+  syncAlarmAudioSettings?(alarm: NativeAlarmInput): Promise<void>;
   snoozeAlarm(id: string, phrase: string): Promise<boolean>;
   stopRinging(id: string): Promise<void>;
   requestAlarmPermission(): Promise<boolean>;
@@ -86,4 +90,14 @@ export async function getDismissedOneTimeAlarms() {
 export async function acknowledgeDismissedOneTimeAlarms(ids: string[]) {
   const module = getNativeModule();
   if (module?.acknowledgeDismissedOneTimeAlarms) await module.acknowledgeDismissedOneTimeAlarms(ids);
+}
+
+export async function startNativeAlarmAudio(alarm: NativeAlarmInput): Promise<boolean> {
+  const module = getNativeModule();
+  return module?.startAlarmAudio ? module.startAlarmAudio(alarm) : false;
+}
+
+export async function syncNativeAlarmAudioSettings(alarm: NativeAlarmInput): Promise<void> {
+  const module = getNativeModule();
+  if (module?.syncAlarmAudioSettings) await module.syncAlarmAudioSettings(alarm);
 }

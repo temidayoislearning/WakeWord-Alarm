@@ -3,6 +3,9 @@ const { withAndroidManifest, withInfoPlist } = require('expo/config-plugins');
 const withWakeWordAndroidAlarmManifest = (config) =>
   withAndroidManifest(config, (mod) => {
     const manifest = mod.modResults;
+    // Android 11+ requires package visibility for text-to-speech engines.
+    manifest.manifest.queries = manifest.manifest.queries ?? [];
+    manifest.manifest.queries.push({ intent: [{ action: [{ $: { 'android:name': 'android.intent.action.TTS_SERVICE' } }] }] });
     const permissions = manifest.manifest['uses-permission'] ?? [];
     const requiredPermissions = [
       'android.permission.SCHEDULE_EXACT_ALARM',
@@ -10,6 +13,8 @@ const withWakeWordAndroidAlarmManifest = (config) =>
       'android.permission.RECEIVE_BOOT_COMPLETED',
       'android.permission.POST_NOTIFICATIONS',
       'android.permission.VIBRATE',
+      'android.permission.FOREGROUND_SERVICE',
+      'android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK',
     ];
     for (const name of requiredPermissions) {
       if (!permissions.some((item) => item.$['android:name'] === name)) {
@@ -20,6 +25,14 @@ const withWakeWordAndroidAlarmManifest = (config) =>
 
     const application = manifest.manifest.application?.[0];
     if (!application) return mod;
+    application.service = application.service ?? [];
+    if (!application.service.some((service) => service.$?.['android:name'] === 'expo.modules.wakewordalarms.WakeWordAlarmAudioService')) {
+      application.service.push({ $: {
+        'android:name': 'expo.modules.wakewordalarms.WakeWordAlarmAudioService',
+        'android:exported': 'false',
+        'android:foregroundServiceType': 'mediaPlayback',
+      } });
+    }
     application.receiver = application.receiver ?? [];
     const receivers = [
       {

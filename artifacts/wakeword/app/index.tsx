@@ -27,7 +27,7 @@ import { MyVoiceRecorder } from '@/components/MyVoiceRecorder';
 import { VoiceModePicker } from '@/components/VoiceModePicker';
 import { VoiceModeId, getVoiceMode, speakWithVoiceMode } from '@/lib/voiceModes';
 import { cancelWakeAlarmNative, cancelWakeAlarmNotifications, scheduleWakeAlarm } from '@/lib/alarmNotifications';
-import { acknowledgeDismissedOneTimeAlarms, getDismissedOneTimeAlarms, openNativeAlarmSettings, snoozeNativeAlarm, stopNativeRinging } from '@/modules/wakeword-alarms/src/WakeWordAlarms';
+import { acknowledgeDismissedOneTimeAlarms, getDismissedOneTimeAlarms, openNativeAlarmSettings, snoozeNativeAlarm, startNativeAlarmAudio, stopNativeRinging, syncNativeAlarmAudioSettings } from '@/modules/wakeword-alarms/src/WakeWordAlarms';
 
 type WakeAlarm = {
   id: string;
@@ -145,6 +145,8 @@ export default function WakeWordHome() {
   const [days, setDays] = useState<number[]>([0, 1, 2, 3, 4]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [ringingAlarm, setRingingAlarm] = useState<WakeAlarm | null>(null);
+  const [nativeVoiceActive, setNativeVoiceActive] = useState(false);
+  const startingAlarmRef = useRef<string | null>(null);
   const audioPlayer = useAudioPlayer(null);
 
   const alarmsRef = useRef(alarms);
@@ -193,6 +195,9 @@ export default function WakeWordHome() {
         await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(reconciled));
         await acknowledgeDismissedOneTimeAlarms(dismissed).catch(() => undefined);
       }
+      if (Platform.OS === 'android') {
+        await Promise.all(reconciled.map((alarm) => syncNativeAlarmAudioSettings(alarm).catch(() => undefined)));
+      }
       setAlarms(reconciled);
       setLoaded(true);
     } catch {
@@ -211,9 +216,17 @@ export default function WakeWordHome() {
   }, []);
 
   const startRinging = useCallback((alarm: WakeAlarm) => {
-    if (!alarm.enabled || ringingRef.current?.id === alarm.id) return;
-    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => undefined);
-    setRingingAlarm(alarm);
+    if (!alarm.enabled || ringingRef.current?.id === alarm.id || startingAlarmRef.current === alarm.id) return;
+    startingAlarmRef.current = alarm.id;
+    void (async () => {
+      const nativeStarted = Platform.OS === 'android'
+        ? await startNativeAlarmAudio(alarm).catch(() => false)
+        : false;
+      setNativeVoiceActive(nativeStarted);
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => undefined);
+      setRingingAlarm(alarm);
+      startingAlarmRef.current = null;
+    })();
   }, []);
 
   useEffect(() => {
@@ -259,7 +272,7 @@ export default function WakeWordHome() {
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (state: AppStateStatus) => {
       if (state === 'active') void loadAlarms();
-      if (state === 'active' && ringingRef.current) {
+      if (state === 'active' && ringingRef.current && !nativeVoiceActive) {
         if (ringingRef.current.recordingUri) {
           audioPlayer.play();
           return;
@@ -270,7 +283,7 @@ export default function WakeWordHome() {
       }
     });
     return () => subscription.remove();
-  }, [audioPlayer, loadAlarms]);
+  }, [audioPlayer, loadAlarms, nativeVoiceActive]);
 
   useEffect(() => {
     if (!ringingAlarm) {
@@ -278,6 +291,12 @@ export default function WakeWordHome() {
       Speech.stop();
       audioPlayer.pause();
       if (speechTimeoutRef.current) clearTimeout(speechTimeoutRef.current);
+      return;
+    }
+
+    if (nativeVoiceActive) {
+      Speech.stop();
+      audioPlayer.pause();
       return;
     }
 
@@ -316,7 +335,7 @@ export default function WakeWordHome() {
       if (speechTimeoutRef.current) clearTimeout(speechTimeoutRef.current);
       Speech.stop();
     };
-  }, [ringingAlarm, audioPlayer]);
+  }, [ringingAlarm, audioPlayer, nativeVoiceActive]);
 
   useEffect(() => {
     if (!loaded) return;
@@ -502,6 +521,7 @@ export default function WakeWordHome() {
       );
       await persistAlarms(next).catch(() => undefined);
     }
+    setNativeVoiceActive(false);
     setRingingAlarm(null);
   };
 
@@ -513,6 +533,7 @@ export default function WakeWordHome() {
     audioPlayer.pause();
     if (speechTimeoutRef.current) clearTimeout(speechTimeoutRef.current);
     if (snoozeTimeoutRef.current) clearTimeout(snoozeTimeoutRef.current);
+    setNativeVoiceActive(false);
     setRingingAlarm(null);
 
     const wakeAt = Date.now() + 5 * 60 * 1000;

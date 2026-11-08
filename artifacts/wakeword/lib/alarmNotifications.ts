@@ -10,6 +10,8 @@ export type SchedulableWakeAlarm = {
   minute: number;
   phrase: string;
   days: number[];
+  voiceMode?: string;
+  recordingUri?: string;
 };
 
 export type AlarmScheduleResult = {

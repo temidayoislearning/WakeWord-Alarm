@@ -26,6 +26,10 @@ class WakeWordAlarmsModule : Module() {
       val manager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
       val normalizedDays = days.distinct().filter { it in 0..6 }.sorted()
       cancelStored(context, id)
+      val voiceMode = input["voiceMode"] as? String ?: "focused"
+      val recordingUri = input["recordingUri"] as? String
+      context.getSharedPreferences("wakeword-audio-settings", Context.MODE_PRIVATE).edit()
+        .putString(id, org.json.JSONObject().put("voiceMode", voiceMode).put("recordingUri", recordingUri ?: "").toString()).apply()
       persist(context, id, hour, minute, phrase, normalizedDays)
       val allowed = Build.VERSION.SDK_INT < Build.VERSION_CODES.S || manager.canScheduleExactAlarms()
       if (!allowed) {
@@ -77,6 +81,25 @@ class WakeWordAlarmsModule : Module() {
       )
     }
 
+    AsyncFunction("syncAlarmAudioSettings") { input: Map<String, Any?> ->
+      val context = appContext.reactContext ?: return@AsyncFunction
+      val id = input["id"] as? String ?: return@AsyncFunction
+      val mode = input["voiceMode"] as? String ?: "focused"
+      val uri = input["recordingUri"] as? String ?: ""
+      context.getSharedPreferences("wakeword-audio-settings", Context.MODE_PRIVATE).edit()
+        .putString(id, org.json.JSONObject().put("voiceMode", mode).put("recordingUri", uri).toString()).apply()
+    }
+
+    AsyncFunction("startAlarmAudio") { input: Map<String, Any?> ->
+      val context = appContext.reactContext ?: return@AsyncFunction false
+      val id = input["id"] as? String ?: return@AsyncFunction false
+      val phrase = input["phrase"] as? String ?: "Wake up"
+      try {
+        startWakeWordAudio(context, id, phrase, input["voiceMode"] as? String, input["recordingUri"] as? String)
+        true
+      } catch (_: Exception) { false }
+    }
+
     AsyncFunction("cancelAlarm") { id: String ->
       val context = appContext.reactContext ?: return@AsyncFunction
       cancelStored(context, id)
@@ -103,6 +126,9 @@ class WakeWordAlarmsModule : Module() {
 
     AsyncFunction("stopRinging") { id: String ->
       val context = appContext.reactContext ?: return@AsyncFunction
+      if (WakeWordAlarmAudioService.currentAlarmId == id) {
+        context.stopService(Intent(context, WakeWordAlarmAudioService::class.java))
+      }
       val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
       manager.cancel(id.hashCode())
     }
