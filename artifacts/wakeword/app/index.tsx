@@ -359,6 +359,15 @@ export default function WakeWordHome() {
     return () => clearInterval(timer);
   }, [loaded, startRinging]);
 
+  const shiftTime = (deltaMinutes: number) => {
+    const current = (hour12 % 12 + (isPM ? 12 : 0)) * 60 + minute;
+    const next = (current + deltaMinutes + 1440) % 1440;
+    const nextHour = Math.floor(next / 60);
+    setHour12(nextHour % 12 || 12);
+    setIsPM(nextHour >= 12);
+    setMinute(next % 60);
+  };
+
   const chooseDay = (day: number) => {
     void Haptics.selectionAsync().catch(() => undefined);
     setDays((current) =>
@@ -620,8 +629,8 @@ export default function WakeWordHome() {
             </View>
 
             <View style={styles.intro}>
-              <Text style={[styles.eyebrow, { color: colors.primary }]}>A BETTER WAY TO BEGIN</Text>
-              <Text style={[styles.heading, { color: colors.foreground }]}>Say it, then{'\n'}make it happen.</Text>
+              <Text style={[styles.eyebrow, { color: colors.primary }]}>YOUR ALARMS</Text>
+              <Text style={[styles.heading, { color: colors.foreground }]}>Start your day{ '\n' }your way.</Text>
               <Text style={[styles.dateLine, { color: colors.mutedForeground }]}>{greeting}</Text>
             </View>
 
@@ -629,7 +638,7 @@ export default function WakeWordHome() {
               <View style={styles.timeCardTop}>
                 <View>
                   <Text style={[styles.sectionEyebrow, { color: colors.clockMuted }]}>SET YOUR ALARM</Text>
-                  <Text style={[styles.timeHint, { color: colors.clockMuted }]}>Tomorrow starts here</Text>
+                  <Text style={[styles.timeHint, { color: colors.clockMuted }]}>Choose your time</Text>
                 </View>
                 <View style={[styles.timeIcon, { backgroundColor: colors.clockIconBg }]}>
                   <Feather name="sunrise" size={18} color={colors.primary} />
@@ -687,7 +696,15 @@ export default function WakeWordHome() {
                   <Feather name="chevron-down" size={13} color={colors.primary} />
                 </Pressable>
               </View>
-              <Text style={[styles.pickerHint, { color: colors.clockMuted }]}>Tap the arrows to adjust</Text>
+              <Text style={[styles.pickerHint, { color: colors.clockMuted }]}>Use arrows for one minute or jump by five.</Text>
+              <View style={styles.timeShortcuts}>
+                <Pressable accessibilityRole="button" accessibilityLabel="Move alarm five minutes earlier" onPress={() => shiftTime(-5)} style={[styles.timeShortcut, { backgroundColor: colors.clockIconBg }]}>
+                  <Text style={[styles.timeShortcutText, { color: colors.clockText }]}>− 5 min</Text>
+                </Pressable>
+                <Pressable accessibilityRole="button" accessibilityLabel="Move alarm five minutes later" onPress={() => shiftTime(5)} style={[styles.timeShortcut, { backgroundColor: colors.clockIconBg }]}>
+                  <Text style={[styles.timeShortcutText, { color: colors.clockText }]}>+ 5 min</Text>
+                </Pressable>
+              </View>
             </View>
 
             <View style={styles.formSection}>
@@ -1047,6 +1064,9 @@ const styles = StyleSheet.create({
   periodButton: { alignItems: 'center', flexDirection: 'row', gap: 2, paddingHorizontal: 9, height: 32, borderRadius: 10, marginLeft: 10, marginTop: 7 },
   periodText: { fontFamily: 'Inter_700Bold', fontSize: 11 },
   pickerHint: { fontFamily: 'Inter_400Regular', fontSize: 10, textAlign: 'center', marginTop: 5 },
+  timeShortcuts: { flexDirection: 'row', justifyContent: 'center', gap: 10, marginTop: 12 },
+  timeShortcut: { minWidth: 82, minHeight: 38, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  timeShortcutText: { fontFamily: 'Inter_600SemiBold', fontSize: 12 },
   formSection: { marginBottom: 22 },
   fieldHeading: { flexDirection: 'row', alignItems: 'center', marginBottom: 11 },
   smallIcon: { width: 28, height: 28, borderRadius: 9, alignItems: 'center', justifyContent: 'center', marginRight: 9 },
