@@ -1,0 +1,39 @@
+name: Android background alarm test
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/wakeword-background-test.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  background-alarm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Download the background-voice preview
+        uses: actions/download-artifact@v4
+        with:
+          name: WakeWord-Android-preview
+          run-id: 42453822166
+          github-token: ${{ github.token }}
+          path: preview
+      - name: Enable emulator acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Set alarm and verify service starts in background
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          disable-animations: true
+          script: |
+            adb install preview/app-release.apk
+            echo 'aW1wb3J0IHN1YnByb2Nlc3MsIHRpbWUsIHJlLCB4bWwuZXRyZWUuRWxlbWVudFRyZWUgYXMgRVQKClBBQ0tBR0UgPSAnY29tLnRlbWlkYXlvaXNsZWFybmluZy53YWtld29yZCcKZGVmIGFkYigqYXJncywgY2hlY2s9VHJ1ZSk6CiAgICBwID0gc3VicHJvY2Vzcy5ydW4oWydhZGInLCAqYXJnc10sIGNhcHR1cmVfb3V0cHV0PVRydWUsIHRleHQ9VHJ1ZSkKICAgIGlmIGNoZWNrIGFuZCBwLnJldHVybmNvZGU6IHJhaXNlIFJ1bnRpbWVFcnJvcihmJ2FkYiB7YXJnc306IHtwLnN0ZGVycn0nKQogICAgcmV0dXJuIHAuc3Rkb3V0CgpkZWYgZHVtcCgpOgogICAgYWRiKCdzaGVsbCcsICd1aWF1dG9tYXRvcicsICdkdW1wJywgJy9zZGNhcmQvd2luZG93LnhtbCcpCiAgICByZXR1cm4gRVQuZnJvbXN0cmluZyhhZGIoJ3NoZWxsJywgJ2NhdCcsICcvc2RjYXJkL3dpbmRvdy54bWwnKSkKCmRlZiBjbGlja19pZChuYW1lKToKICAgIGZvciBub2RlIGluIGR1bXAoKS5pdGVyKCk6CiAgICAgICAgaWYgbm9kZS5hdHRyaWIuZ2V0KCdyZXNvdXJjZS1pZCcpID09IG5hbWU6CiAgICAgICAgICAgIGNvb3JkcyA9IGxpc3QobWFwKGludCwgcmUuZmluZGFsbChyJ1xkKycsIG5vZGUuYXR0cmliWydib3VuZHMnXSkpKQogICAgICAgICAgICBpZiBjb29yZHNbM10gPD0gY29vcmRzWzFdOiBjb250aW51ZQogICAgICAgICAgICBhZGIoJ3NoZWxsJywgJ2lucHV0JywgJ3RhcCcsIHN0cigoY29vcmRzWzBdK2Nvb3Jkc1syXSkvLzIpLCBzdHIoKGNvb3Jkc1sxXStjb29yZHNbM10pLy8yKSkKICAgICAgICAgICAgcmV0dXJuIFRydWUKICAgIHJldHVybiBGYWxzZQoKYWRiKCdyb290JykKYWRiKCd3YWl0LWZvci1kZXZpY2UnKQphZGIoJ3NoZWxsJywgJ3NldHRpbmdzJywgJ3B1dCcsICdnbG9iYWwnLCAnYXV0b190aW1lJywgJzAnKQphZGIoJ3NoZWxsJywgJ3NldHRpbmdzJywgJ3B1dCcsICdnbG9iYWwnLCAnYXV0b190aW1lX3pvbmUnLCAnMCcpCmFkYignc2hlbGwnLCAnZGF0ZScsICcxMTA5MDY1NzIwMjYuMDAnKQphZGIoJ3NoZWxsJywgJ3BtJywgJ2dyYW50JywgUEFDS0FHRSwgJ2FuZHJvaWQucGVybWlzc2lvbi5QT1NUX05PVElGSUNBVElPTlMnKQphZGIoJ3NoZWxsJywgJ2FwcG9wcycsICdzZXQnLCBQQUNLQUdFLCAnU0NIRURVTEVfRVhBQ1RfQUxBUk0nLCAnYWxsb3cnKQphZGIoJ3NoZWxsJywgJ2FwcG9wcycsICdzZXQnLCBQQUNLQUdFLCAnVVNFX0ZVTExfU0NSRUVOX0lOVEVOVCcsICdkZW55JywgY2hlY2s9RmFsc2UpCmFkYignc2hlbGwnLCAnbW9ua2V5JywgJy1wJywgUEFDS0FHRSwgJzEnKQp0aW1lLnNsZWVwKDIwKQppZiBub3QgY2xpY2tfaWQoJ3BocmFzZS1pbnB1dCcpOiByYWlzZSBSdW50aW1lRXJyb3IoJ1BocmFzZSBmaWVsZCBub3QgdmlzaWJsZScpCmFkYignc2hlbGwnLCAnaW5wdXQnLCAndGV4dCcsICdXYWtlJTIwdXAnKQphZGIoJ3NoZWxsJywgJ2lucHV0JywgJ2tleWV2ZW50JywgJzQnKQpmb3IgaSBpbiByYW5nZSg4KToKICAgIGlmIGNsaWNrX2lkKCdzZXQtYWxhcm0nKTogYnJlYWsKICAgIGFkYignc2hlbGwnLCAnaW5wdXQnLCAnc3dpcGUnLCAnMTYwJywgJzUzNScsICcxNjAnLCAnMjIwJywgJzQwMCcpCmVsc2U6IHJhaXNlIFJ1bnRpbWVFcnJvcignQWxhcm0gc2V0IGJ1dHRvbiBub3QgZm91bmQnKQp0aW1lLnNsZWVwKDUpCmFkYignc2hlbGwnLCAnaW5wdXQnLCAna2V5ZXZlbnQnLCAnMycpCmFkYignc2hlbGwnLCAnaW5wdXQnLCAna2V5ZXZlbnQnLCAnMjYnKQphZGIoJ3NoZWxsJywgJ2RhdGUnLCAnMTEwOTA2NTkyMDI2LjUwJykKdGltZS5zbGVlcCgzNSkKc2VydmljZXMgPSBhZGIoJ3NoZWxsJywgJ2R1bXBzeXMnLCAnYWN0aXZpdHknLCAnc2VydmljZXMnLCBQQUNLQUdFKQpwcmludChzZXJ2aWNlcykKcHJpbnQoYWRiKCdzaGVsbCcsICdkdW1wc3lzJywgJ2F1ZGlvJykpCmlmICdXYWtlV29yZEFsYXJtQXVkaW9TZXJ2aWNlJyBub3QgaW4gc2VydmljZXM6IHJhaXNlIFJ1bnRpbWVFcnJvcignQmFja2dyb3VuZCBhdWRpbyBzZXJ2aWNlIGRpZCBub3Qgc3RhcnQnKQpwcmludCgnQkFDS0dST1VORCBTRVJWSUNFIFNUQVJURUQ7IGF1ZGlibGUgc3BlZWNoIHN0aWxsIHJlcXVpcmVzIGFuIGF1ZGlvL2RldmljZSB0ZXN0JykK' | base64 --decode > /tmp/wakeword_background_probe.py
+            python3 /tmp/wakeword_background_probe.py
